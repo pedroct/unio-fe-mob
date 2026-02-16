@@ -1,0 +1,191 @@
+# Diretrizes de UX Writing — UNIO
+
+Versão: 1.0  
+Data: 16 de Fevereiro de 2026  
+Status: Consolidado a partir do material visual de diretrizes
+
+---
+
+## 1. Princípios Fundamentais
+
+Toda palavra no UNIO deve passar por este filtro:
+
+| Princípio | Pergunta-guia | Se a resposta for “não”, reescreva. |
+|---|---|---|
+| Clareza | O usuário entende em 3 segundos? | Simplifique. |
+| Utilidade | Isso ajuda o usuário a agir ou decidir? | Remova ou reformule. |
+| Empatia | Respeita o momento emocional do usuário? | Ajuste o tom. |
+| Consistência | Está alinhado com o restante do app? | Padronize. |
+
+---
+
+## 2. Estrutura de Mensagens
+
+### Hierarquia de informação
+
+Sempre siga esta ordem:
+
+1. O que (o que aconteceu ou precisa acontecer)
+2. Por quê (contexto, se necessário)
+3. Como (ação disponível)
+
+### Exemplo — Erro de sincronização
+
+Não recomendado:
+- Ocorreu um erro no processo de sincronização com o dispositivo Bluetooth pareado. Por favor, verifique as configurações.
+
+Recomendado:
+- Não conseguimos conectar à balança. Verifique se o Bluetooth está ligado.
+
+### Anatomia de uma mensagem
+
+- Título claro e curto
+- Descrição com contexto mínimo necessário
+- Ação principal
+- Ação secundária opcional
+
+### Exemplo — Completar perfil
+
+Título: Complete seu perfil  
+Descrição: Precisamos de algumas informações para personalizar suas metas.  
+Ações: Continuar | Agora não
+
+---
+
+## 3. Padrões por Componente
+
+### 3.1 Títulos de tela
+
+| Diretriz | Exemplo |
+|---|---|
+| Máximo 3 palavras quando possível. | Diário Nutricional |
+| Substantivos, não verbos. | Certo: Meu Treino · Errado: Veja seu Treino |
+| Sem pontuação final. | Certo: Hidratação · Errado: Hidratação. |
+
+### 3.2 Botões e CTAs
+
+| Diretriz | Certo | Errado |
+|---|---|---|
+| Comece com verbo no infinitivo. | Registrar refeição | Registro de refeição |
+| Seja específico sobre a ação. | Salvar treino | OK |
+| Máximo 3 palavras. | Adicionar alimento | Clique aqui para adicionar um novo alimento |
+| Ação principal em destaque. | Salvar (principal) · Cancelar | Cancelar (principal) · Salvar |
+
+#### Vocabulário padrão de CTAs
+
+| Ação | Verbo preferido |
+|---|---|
+| Criar novo item | Adicionar |
+| Gravar informação | Salvar |
+| Ir para próxima etapa | Continuar |
+| Confirmar escolha | Confirmar |
+| Sair sem salvar | Cancelar |
+| Remover item | Excluir |
+| Tentar novamente | Tentar de novo |
+
+### 3.3 Campos de formulário
+
+| Elemento | Diretriz | Exemplo |
+|---|---|---|
+| Label | Curto, sem dois-pontos. | Peso atual |
+| Placeholder | Exemplo do formato esperado. | Ex: 72,5 |
+| Texto auxiliar | Só se necessário, abaixo do campo. | Em quilogramas, com uma casa decimal. |
+| Erro inline | Diga o que corrigir, não o que errou. | Certo: Insira um peso válido. · Errado: Erro: campo inválido. |
+
+### 3.4 Estados vazios
+
+Quando não há dados, aproveite para orientar e motivar.
+
+Estrutura:
+
+1. Ilustração opcional
+2. Título que nomeia o vazio
+3. Frase que orienta a ação
+4. CTA
+
+Exemplos:
+
+| Tela | Copy |
+|---|---|
+| Diário sem refeições | Nenhuma refeição hoje. Registre o que você comeu para acompanhar seus macros. Ação: Adicionar refeição |
+| Treino sem histórico | Seu histórico começa aqui. Complete seu primeiro treino para ver sua evolução. Ação: Ir para treino |
+| Hidratação zerada | 0 ml até agora. Que tal registrar seu primeiro copo? Ação: Registrar água |
+
+### 3.5 Notificações e alertas
+
+#### Tipos e tons
+
+| Tipo | Tom | Exemplo |
+|---|---|---|
+| Sucesso | Celebratório, breve. | Treino salvo. Bom trabalho! |
+| Informativo | Neutro, objetivo. | Sua meta de proteína foi ajustada pelo nutricionista. |
+| Aviso | Cuidadoso, sem alarme. | Estoque de creatina baixo. Considere repor. |
+| Erro | Direto, solucionador. | Não foi possível salvar. Tente novamente. |
+
+#### Push notifications
+
+| Diretriz | Exemplo |
+|---|---|
+| Limite: 50 caracteres no título, 100 na descrição. | Título: Hora da água · Texto: Você bebeu 1,2 L de 2,5 L hoje. |
+| Seja útil, não invasivo. | Certo: Seu treino de hoje está pronto. · Errado: Ei! Você esqueceu de treinar! |
+| Inclua dado concreto quando possível. | Faltam 800 ml para sua meta de água. |
+
+### 3.6 Feedback de progresso
+
+#### Progresso positivo
+
+| Situação | Copy |
+|---|---|
+| Meta diária atingida | Meta de proteína atingida. 142 g de 140 g. |
+| Sequência de dias | 5 dias seguidos registrando refeições. Continue assim. |
+| Evolução mensal | Sua massa muscular aumentou 0,8 kg em 30 dias. |
+
+#### Progresso negativo ou neutro
+
+Nunca culpabilize. Contextualize e abra caminho para retomada.
+
+| Situação | Copy |
+|---|---|
+| Meta não atingida | Ficou em 1.800 de 2.200 kcal hoje. Amanhã é um novo dia. |
+| Semana irregular | Você treinou 2 de 5 dias esta semana. Quer ajustar a meta? |
+| Peso aumentou | Seu peso subiu 0,4 kg desde a última medição. Variações são normais. |
+
+### 3.8 Mensagens de erro
+
+Fórmula:
+
+- O que aconteceu + o que fazer agora
+
+| Erro | Ruim | Bom |
+|---|---|---|
+| Conexão falhou | Erro de rede. | Sem conexão. Verifique sua internet e tente de novo. |
+| Login inválido | Credenciais incorretas. | E-mail ou senha incorretos. Tente novamente ou redefina sua senha. |
+| Campo obrigatório | Campo obrigatório não preenchido. | Preencha seu peso para continuar. |
+| Ação impossível | Operação não permitida. | Não é possível excluir um treino em andamento. Finalize ou cancele primeiro. |
+
+### 3.9 Tooltips e textos de ajuda
+
+| Diretriz | Exemplo |
+|---|---|
+| Use para explicar conceitos, não ações óbvias. | IMC: Índice de Massa Corporal, calculado pela divisão do peso pela altura ao quadrado. |
+| Seja breve. Máximo 2 linhas. | RPE: Escala de 1 a 10 que mede seu esforço percebido. |
+| Evite tooltips em botões autoexplicativos. | Errado: Tooltip no botão Salvar explicando que ele salva. |
+
+---
+
+## 4. Checklist rápido de revisão
+
+Antes de publicar qualquer copy, valide:
+
+- O usuário entende em 3 segundos.
+- A frase ajuda a agir ou decidir.
+- O tom respeita o momento emocional.
+- O vocabulário está padronizado no app.
+- CTAs estão no infinitivo e com até 3 palavras quando possível.
+- Mensagens de erro explicam o que aconteceu e o próximo passo.
+
+---
+
+## 5. Observação
+
+Este documento consolida o conteúdo do material visual de diretrizes de UX Writing compartilhado para o UNIO.

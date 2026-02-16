@@ -8,6 +8,7 @@ import SplashScreen from "@/pages/splash";
 import AuthScreen from "@/pages/auth";
 import OnboardingScreen from "@/pages/onboarding";
 import WelcomeScreen from "@/pages/welcome";
+import HomeScreen from "@/pages/home";
 
 function Router() {
   return (
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/auth" component={AuthScreen} />
       <Route path="/onboarding" component={OnboardingScreen} />
       <Route path="/welcome" component={WelcomeScreen} />
+      <Route path="/home" component={HomeScreen} />
       <Route component={NotFound} />
     </Switch>
   );

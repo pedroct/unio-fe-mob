@@ -54,7 +54,7 @@ export default function AuthScreen() {
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     setIsLoading(false);
-    setLocation("/onboarding");
+    setLocation("/home");
   };
 
   const toggleMode = (newMode: "login" | "register") => {
