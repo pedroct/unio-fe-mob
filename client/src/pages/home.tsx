@@ -89,15 +89,25 @@ export default function HomeScreen() {
       <main className="px-6 space-y-6 -mt-20 relative z-10">
         {/* Daily Goal Cards */}
         <div className="grid grid-cols-2 gap-3">
-          <button className="bg-white p-4 rounded-2xl shadow-sm border border-[#E8EBE5] text-left active:scale-[0.98] transition-transform">
+          <motion.button 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/5 border border-[#E8EBE5] text-left active:scale-[0.98] transition-transform"
+          >
             <h3 className="font-display text-sm font-semibold text-[#2F5641] mb-1">Bater Macros</h3>
             <p className="text-[11px] text-[#8B9286] leading-tight">Registre refeições para atingir a meta.</p>
-          </button>
+          </motion.button>
           
-          <button className="bg-white p-4 rounded-2xl shadow-sm border border-[#E8EBE5] text-left active:scale-[0.98] transition-transform">
+          <motion.button 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/5 border border-[#E8EBE5] text-left active:scale-[0.98] transition-transform"
+          >
             <h3 className="font-display text-sm font-semibold text-[#2F5641] mb-1">Meta Água</h3>
             <p className="text-[11px] text-[#8B9286] leading-tight">1.2L de 2.5L <br/><span className="text-[#3D7A8C] font-medium">Quase lá!</span></p>
-          </button>
+          </motion.button>
         </div>
 
         {/* Food Log Summary */}
