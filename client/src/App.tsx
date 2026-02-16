@@ -15,6 +15,8 @@ import BiometricsLinkScreen from "@/pages/biometrics/link";
 import BiometricsScanScreen from "@/pages/biometrics/scan";
 import NutritionScreen from "@/pages/nutrition";
 import NutritionAddScreen from "@/pages/nutrition/add";
+import TrainingScreen from "@/pages/training";
+import TrainingDetailsScreen from "@/pages/training/details";
 import { useState } from "react";
 
 function Router() {
@@ -29,6 +31,10 @@ function Router() {
       {/* Nutrition Module */}
       <Route path="/nutrition" component={NutritionScreen} />
       <Route path="/nutrition/add" component={NutritionAddScreen} />
+
+      {/* Training Module */}
+      <Route path="/training" component={TrainingScreen} />
+      <Route path="/training/details" component={TrainingDetailsScreen} />
       
       {/* Biometrics Module */}
       <Route path="/biometrics" component={BiometricsScreen} />

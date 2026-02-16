@@ -167,7 +167,10 @@ export default function HomeScreen() {
               </div>
             </div>
             
-            <button className="w-full bg-[#C7AE6A] text-white py-3 rounded-xl font-semibold text-sm shadow-md hover:bg-[#D5BD95] transition-colors flex items-center justify-center gap-2">
+            <button 
+              onClick={() => setLocation("/training/details")}
+              className="w-full bg-[#C7AE6A] text-white py-3 rounded-xl font-semibold text-sm shadow-md hover:bg-[#D5BD95] transition-colors flex items-center justify-center gap-2"
+            >
               Iniciar Treino <ChevronRight size={16} />
             </button>
           </div>
