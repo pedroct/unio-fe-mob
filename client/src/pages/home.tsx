@@ -1,5 +1,5 @@
 import Layout from "@/components/layout";
-import { Bell, ChevronRight, Droplets, Plus, TrendingUp } from "lucide-react";
+import { Bell, ChevronRight, Droplets, Plus, TrendingUp, Dumbbell } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { motion } from "framer-motion";
 
@@ -166,7 +166,10 @@ export default function HomeScreen() {
         </section>
 
         {/* Body Composition Card */}
-        <section className="bg-white p-5 rounded-2xl border border-[#E8EBE5] shadow-sm">
+        <section 
+          onClick={() => setLocation("/biometrics")}
+          className="bg-white p-5 rounded-2xl border border-[#E8EBE5] shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+        >
            <div className="flex items-center justify-between mb-4">
              <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide flex items-center gap-2">
                <TrendingUp size={16} /> Composição
