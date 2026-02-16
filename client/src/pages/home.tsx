@@ -21,7 +21,7 @@ export default function HomeScreen() {
   return (
     <Layout>
       {/* Header */}
-      <header className="px-6 pt-14 pb-12 bg-gradient-to-b from-[#FAFBF8] to-[#F5F3EE]">
+      <header className="px-6 pt-14 pb-28 bg-gradient-to-b from-[#FAFBF8] to-[#F5F3EE]">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[#E8EBE5] overflow-hidden">
@@ -86,7 +86,7 @@ export default function HomeScreen() {
         </div>
       </header>
 
-      <main className="px-6 space-y-6">
+      <main className="px-6 space-y-6 -mt-20 relative z-10">
         {/* Daily Goal Cards */}
         <div className="grid grid-cols-2 gap-3">
           <button className="bg-white p-4 rounded-2xl shadow-sm border border-[#E8EBE5] text-left active:scale-[0.98] transition-transform">
