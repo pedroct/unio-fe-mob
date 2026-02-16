@@ -15,6 +15,7 @@ import BiometricsLinkScreen from "@/pages/biometrics/link";
 import BiometricsScanScreen from "@/pages/biometrics/scan";
 import NutritionScreen from "@/pages/nutrition";
 import NutritionAddScreen from "@/pages/nutrition/add";
+import NutritionScaleScreen from "@/pages/nutrition/scale";
 import TrainingScreen from "@/pages/training";
 import TrainingDetailsScreen from "@/pages/training/details";
 import TrainingPlayerScreen from "@/pages/training/player";
@@ -34,6 +35,7 @@ function Router() {
       {/* Nutrition Module */}
       <Route path="/nutrition" component={NutritionScreen} />
       <Route path="/nutrition/add" component={NutritionAddScreen} />
+      <Route path="/nutrition/scale" component={NutritionScaleScreen} />
       <Route path="/pantry" component={PantryScreen} />
 
       {/* Training Module */}

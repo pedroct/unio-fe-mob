@@ -133,7 +133,10 @@ export default function NutritionScreen() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#E8EBE5] relative overflow-hidden">
+              <div 
+                className="bg-white rounded-2xl p-4 shadow-sm border border-[#E8EBE5] relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+                onClick={() => setLocation("/nutrition/scale")}
+              >
                 <div className="flex justify-between items-start mb-2">
                   <div className="w-8 h-8 rounded-full bg-[#FAFBF8] flex items-center justify-center text-[#2F5641]">
                     <Scale size={16} />
