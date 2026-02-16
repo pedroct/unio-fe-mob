@@ -1,0 +1,150 @@
+# UNIO — Tela 01: Splash Screen
+
+## Contexto
+Primeira tela do app UNIO. Aparece ao abrir o app.
+Logo animada com a folha do ícone oficial → transição automática para Welcome após 2 segundos.
+Sensação: premium, orgânica, calma — como abrir um app de saúde de alto padrão.
+
+## Assets Obrigatórios
+- **Ícone oficial**: usar o SVG `Unio_Icone.svg` (162×166px, folha verde com detalhes dourados)
+  - Contém folha estilizada com paths em múltiplas camadas (#2F5641, #648D4A, #668F4B, #4A7246)
+  - Detalhes dourados (#AD8C48, #C7AE6A, #D5BD95, #DBCD90)
+  - Elementos terra/terracota (#BA8E73, #C19E6F, #787337)
+- **Logo oficial**: usar o SVG `Unio_Logo.svg` (570×169px) OU renderizar o wordmark "UNIO" em Playfair Display
+- Ambos os SVGs devem ser embutidos inline (não como <img>) para permitir animação dos paths
+
+## Design Tokens (obrigatório)
+```css
+--bg-gradient-start: #2F5641;
+--bg-gradient-mid: #4A7246;
+--bg-gradient-end: #648D4A;
+--bg-primary: #FAFBF8;
+--cream: #F5F3EE;
+--cream-light: #EFECB6;
+--dourado: #C7AE6A;
+--dourado-escuro: #AD8C48;
+--dourado-claro: #D5BD95;
+--verde-escuro: #2F5641;
+--verde-medio: #4A7246;
+--verde-claro: #648D4A;
+--text-muted: #8B9286;
+Font display: 'Playfair Display', serif;
+Font body: 'Inter', sans-serif;
+```
+
+## Layout (430×932 mobile frame)
+
+### Background
+- Gradiente radial centralizado no terço superior:
+  ```css
+  background: radial-gradient(ellipse at 50% 30%, #4A7246 0%, #2F5641 70%);
+  ```
+- Overlay de luminosidade sutil (duas manchas brancas com 4% opacidade):
+  - Mancha 1: radial-gradient em 20% 50%, branco 80% opacidade, fade to transparent
+  - Mancha 2: radial-gradient em 80% 20%, branco 50% opacidade, fade to transparent
+
+### Partículas decorativas (6 elementos)
+- Shapes de folha: border-radius `50% 0 50% 0` (formato losango orgânico)
+- Tamanhos: 6px a 18px
+- Cores alternadas: --dourado e --verde-claro
+- Opacidade: 0.15 a 0.39
+- Distribuídas ao redor do centro (15%-85% horizontal, 20%-70% vertical)
+- Animação: entram com translateY(40px→0) + rotate(0→variado) + scale(0→1)
+  - Timing: 0.8s-1.7s staggered, cubic-bezier(0.34, 1.56, 0.64, 1)
+  - Delay: 0.0s a 0.5s incrementais
+
+### Conteúdo Central (flex column, center center, z-index 10)
+
+#### 1. Ícone UNIO (SVG oficial inline)
+- Tamanho: 120×120px (scale do SVG original 162×166)
+- Embutir o SVG `Unio_Icone.svg` completo inline
+- Animação de entrada:
+  - scale(0.8→1) + translateY(20px→0) + opacity(0→1)
+  - Timing: 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)
+- **Animação da folha** (elemento chave da splash):
+  - Os paths verdes principais (#2F5641, #648D4A) fazem stroke-dasharray reveal
+  - Os detalhes dourados (#C7AE6A, #AD8C48) aparecem com delay de 0.3s
+  - A folha central ganha um sutil pulse de scale (1→1.02→1) em loop a cada 2s
+
+#### 2. Wordmark "UNIO"
+- Opção A: Embutir `Unio_Logo.svg` inline (570×169, escalar para ~200px largura)
+- Opção B: Texto "UNIO" em Playfair Display, 42px, weight 300, letter-spacing 14px
+- Cor: --cream (#F5F3EE)
+- Margin-top: 24px do ícone
+- Animação: translateY(15px→0) + opacity(0→1), 0.6s ease-out, delay 0.5s
+
+#### 3. Tagline "Dados que cuidam de você"
+- Font: Inter 11px, weight 500, letter-spacing 3px, uppercase
+- Cor: --dourado (#C7AE6A)
+- Margin-top: 12px
+- Animação: translateY(10px→0) + opacity(0→1), 0.6s ease-out, delay 0.7s
+
+#### 4. Barra de loading (abaixo do tagline)
+- Margin-top: 48px
+- Container: 32×2px, background --dourado com 19% opacidade, border-radius 1px
+- Fill interno: largura 0→100%, background --dourado sólido
+- Animação: width transition 1.4s ease-in-out, delay 0.2s
+
+### Footer
+- Texto: "Dados que cuidam de você"
+- Font: Inter 9px, letter-spacing 1.5px, uppercase
+- Cor: --cream com 40% opacidade
+- Posição: absolute, bottom 48px, centralizado
+- Animação: opacity(0→0.4), 0.6s ease-out, delay 1s
+
+### Overlay de Saída
+- Div absoluta cobrindo tudo, background: --bg-primary (#FAFBF8)
+- Z-index: 20, pointer-events: none
+- Opacity 0→1, transição 0.6s ease-out
+- Ativa na fase "exit" (após 2.4s)
+
+## Fases de Animação (state machine)
+
+### Fase 1: "loading" (0ms - 800ms)
+- Tudo invisível (opacity 0, transforms iniciais)
+- Background visível
+
+### Fase 2: "ready" (800ms - 2400ms)
+- Ícone aparece com spring animation
+- Partículas flutuam para posição
+- Wordmark faz slide-up
+- Tagline faz slide-up com delay
+- Barra de loading preenche
+- Footer aparece suavemente
+
+### Fase 3: "exit" (2400ms+)
+- Overlay branco faz fade-in (0.6s)
+- Todo conteúdo faz fade-out simultaneamente
+- Após transição completa → navegar para Welcome Screen
+
+## Implementação React
+```jsx
+const [phase, setPhase] = useState("loading");
+
+useEffect(() => {
+  const t1 = setTimeout(() => setPhase("ready"), 800);
+  const t2 = setTimeout(() => setPhase("exit"), 2400);
+  return () => { clearTimeout(t1); clearTimeout(t2); };
+}, []);
+```
+
+Usar conditional styles baseados em `phase` para controlar todas as animações via CSS transitions (não keyframes). Isso garante controle preciso do timing.
+
+## Micro-interações
+- Haptic feedback leve no momento do "ready" (se disponível via navigator.vibrate)
+- O ícone da folha tem um glow sutil (box-shadow verde com 12% opacidade) durante "ready"
+- Partículas fazem gentle floating (translateY ±3px) em loop durante "ready"
+
+## Acessibilidade
+- aria-label="UNIO - Carregando" no container principal
+- role="status" na barra de loading
+- prefers-reduced-motion: pular animações, mostrar tudo estático por 2s, transição direta
+
+## Stack
+React + CSS-in-JS inline (ou Tailwind)
+Mobile-first, 430px max-width centralizado, 100vh height
+Importar Google Fonts: Playfair Display (300-600) + Inter (300-700)
+
+## Arquivos de referência
+- Ícone: `Unio_Icone.svg` (usar paths inline no JSX)
+- Logo: `Unio_Logo.svg` (usar paths inline no JSX ou renderizar wordmark em texto)
