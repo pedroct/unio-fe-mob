@@ -1,5 +1,5 @@
 import Layout from "@/components/layout";
-import { ChevronLeft, Calendar, Search, ScanBarcode, Plus, Flame, ChevronRight } from "lucide-react";
+import { ChevronLeft, Calendar, Search, ScanBarcode, Plus, Flame, ChevronRight, Package, Scale } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
 import { motion } from "framer-motion";
@@ -112,6 +112,38 @@ export default function NutritionScreen() {
                  </div>
                </div>
              </div>
+          </section>
+
+          {/* Quick Stats Grid */}
+          <section className="mb-6">
+            <div className="grid grid-cols-2 gap-3">
+              <div 
+                onClick={() => setLocation("/pantry")}
+                className="bg-[#2F5641] rounded-2xl p-4 text-white shadow-lg shadow-[#2F5641]/20 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+              >
+                <div className="absolute top-0 right-0 p-3 opacity-10">
+                  <Package size={48} />
+                </div>
+                <div className="relative z-10">
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center mb-3 backdrop-blur-sm">
+                    <Package size={16} />
+                  </div>
+                  <h3 className="font-display text-lg mb-0.5">Despensa</h3>
+                  <p className="text-[10px] opacity-80 uppercase tracking-wider font-medium">2 itens críticos</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#E8EBE5] relative overflow-hidden">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="w-8 h-8 rounded-full bg-[#FAFBF8] flex items-center justify-center text-[#2F5641]">
+                    <Scale size={16} />
+                  </div>
+                  <span className="text-[10px] font-bold text-[#648D4A] bg-[#648D4A]/10 px-2 py-1 rounded-lg">Online</span>
+                </div>
+                <h3 className="font-display text-sm text-[#2F5641]">Balança</h3>
+                <p className="text-[10px] text-[#8B9286]">Conectada</p>
+              </div>
+            </div>
           </section>
 
           {/* Meals List */}
