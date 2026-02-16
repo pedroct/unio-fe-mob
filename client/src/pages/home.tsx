@@ -181,7 +181,7 @@ export default function HomeScreen() {
              onClick={() => setLocation("/biometrics")}
              className="cursor-pointer active:scale-[0.98] transition-transform"
            >
-             <div className="flex items-center justify-between mb-4">
+             <div className="flex items-center justify-between mb-4 pr-12">
                <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide flex items-center gap-2">
                  <TrendingUp size={16} /> Composição
                </h2>
