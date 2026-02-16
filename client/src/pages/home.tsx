@@ -21,7 +21,7 @@ export default function HomeScreen() {
   return (
     <Layout>
       {/* Header */}
-      <header className="px-6 pt-14 pb-6 bg-gradient-to-b from-[#FAFBF8] to-[#F5F3EE]">
+      <header className="px-6 pt-14 pb-12 bg-gradient-to-b from-[#FAFBF8] to-[#F5F3EE]">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[#E8EBE5] overflow-hidden">
