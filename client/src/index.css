@@ -11,6 +11,7 @@
   --color-unio-bg-mid: #4A7246;
   --color-unio-bg-end: #648D4A;
   --color-unio-primary: #FAFBF8;
+  --color-unio-secondary: #F5F3EE; /* Added secondary bg */
   --color-unio-cream: #F5F3EE;
   --color-unio-cream-light: #EFECB6;
   --color-unio-gold: #C7AE6A;
@@ -20,6 +21,14 @@
   --color-unio-green-mid: #4A7246;
   --color-unio-green-light: #648D4A;
   --color-unio-text-muted: #8B9286;
+  
+  /* New Module Colors */
+  --color-mod-nutricao: #648D4A;
+  --color-mod-treino: #D97952;
+  --color-mod-corpo: #3D7A8C;
+  --color-text-primary: #2F5641;
+  --color-text-secondary: #5F6B5A;
+  --color-border-light: #E8EBE5;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

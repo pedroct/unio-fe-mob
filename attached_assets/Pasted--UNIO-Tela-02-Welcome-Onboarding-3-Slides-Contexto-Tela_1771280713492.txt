@@ -1,0 +1,124 @@
+# UNIO — Tela 02: Welcome Onboarding (3 Slides)
+
+## Contexto
+Tela de onboarding do app UNIO. Aparece após a Splash Screen. 
+Três slides apresentam os módulos principais: Nutrição, Treino e Biometria.
+O usuário pode navegar por swipe horizontal, dots ou botão "Próximo".
+
+## Design Tokens (obrigatório)
+```css
+--bg-primary: #FAFBF8;
+--bg-secondary: #F5F3EE;
+--text-primary: #2F5641;
+--text-secondary: #5F6B5A;
+--text-muted: #8B9286;
+--border-light: #E8EBE5;
+--mod-nutricao: #648D4A;
+--mod-treino: #D97952;
+--mod-corpo: #3D7A8C;
+--verde-escuro: #2F5641;
+--verde-medio: #4A7246;
+--dourado: #C7AE6A;
+Font display: 'Playfair Display', serif;
+Font body: 'Inter', sans-serif;
+```
+
+## Layout (430×932 mobile frame)
+
+### Top Bar (sticky)
+- Padding: 56px top (safe area) + 24px horizontal
+- Botão "Pular" alinhado à direita
+  - Font: Inter 14px weight 500, cor --text-muted
+  - Sem background, sem borda
+
+### Área de Ilustração (centro superior)
+- Círculo de 200×200px centralizado
+  - Background: cor do módulo ativo com 7% opacidade (ex: #648D4A12)
+  - Anel decorativo: 224×224px, borda 1px cor do módulo com 8% opacidade
+  - 3 dots flutuantes (6×6px) posicionados ao redor, cor do módulo 20% opacidade
+- Ícone SVG centralizado no círculo (88×88px)
+  - Slide 1 (Nutrição): Ícone de pote/recipiente com folha, cor --mod-nutricao
+  - Slide 2 (Treino): Ícone de barra/haltere com seta pra cima, cor --mod-treino
+  - Slide 3 (Corpo): Ícone de silhueta com check, cor --mod-corpo
+- Transição entre slides: scale + opacity, cubic-bezier(0.34, 1.56, 0.64, 1)
+
+### Área de Conteúdo (padding 24px 32px)
+- **Module badge**: 
+  - Quadrado 8×8px cor do módulo + texto uppercase
+  - Font: Inter 11px weight 600, letter-spacing 2px, cor do módulo ativo
+  - Labels: "NUTRIÇÃO", "TREINO", "BIOMETRIA"
+
+- **Título**: 
+  - Font: Playfair Display 34px weight 600, line-height 1.15
+  - Cor: --text-primary (#2F5641)
+  - Quebra em 2 linhas:
+    - Slide 1: "Nutrição\nUnificada"
+    - Slide 2: "Treino\nInteligente"  
+    - Slide 3: "Corpo\nConectado"
+
+- **Descrição**:
+  - Font: Inter 15px weight 400, line-height 1.6
+  - Cor: --text-secondary (#5F6B5A)
+  - Max-width: 320px
+  - Textos:
+    - Slide 1: "Registre refeições em segundos com scanner, balança BLE e base inteligente. Seus macros, sempre atualizados."
+    - Slide 2: "Prescrição profissional com execução guiada. Timer automático, progressão de carga e histórico completo."
+    - Slide 3: "Composição corporal via balança inteligente. Correlacione treino, dieta e evolução em um só lugar."
+
+- **Feature chips** (3 por slide):
+  - Pill shape: padding 6px 14px, border-radius 20px
+  - Background: cor do módulo 7% opacidade
+  - Borda: 1px cor do módulo 12% opacidade
+  - Font: Inter 12px weight 500, cor do módulo
+  - Gap: 8px, flex-wrap
+  - Slide 1: "Scanner de código de barras", "Balança BLE integrada", "Macros em tempo real"
+  - Slide 2: "Prescrição profissional", "Timer automático", "Progressão de carga"
+  - Slide 3: "Composição corporal", "Balança inteligente", "Correlação cruzada"
+
+### Bottom Controls (padding 16px 32px 48px)
+- Layout: flex, space-between, align-center
+
+- **Dot indicators** (esquerda):
+  - 3 dots com gap 8px
+  - Dot ativo: 24×8px, border-radius 4px, cor do módulo ativo
+  - Dots inativos: 8×8px, border-radius 4px, cor --text-muted 19% opacidade
+  - Transição: width + background, 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)
+  - Clicáveis para navegação direta
+
+- **Botão de ação** (direita):
+  - Slides 1-2: "Próximo →"
+    - Background: cor do módulo ativo sólida
+    - Padding: 12px 24px, border-radius 24px
+    - Font: Inter 14px weight 600, cor branca
+    - Shadow: 0 4px 16px cor-módulo 19% opacidade
+  - Slide 3: "Começar →"
+    - Background: gradient(135deg, #2F5641, #4A7246)
+    - Padding: 14px 32px, border-radius 28px
+    - Font: Inter 16px weight 600, cor branca  
+    - Shadow: 0 8px 24px #2F564140
+  - Seta: SVG 16×16, chevron right, stroke currentColor
+
+## Interações
+1. Swipe horizontal entre slides (touch gesture)
+2. Dots clicáveis para navegação direta
+3. Botão "Próximo" avança slide (último slide: "Começar" navega para tela de Signup)
+4. Botão "Pular" vai direto para Signup
+5. Todas as transições de conteúdo: 0.4s ease com slide direction awareness
+6. Cores se adaptam ao módulo do slide ativo (verde → laranja → azul)
+
+## Animações
+- Entrada do ícone: scale(0.8→1) + opacity(0→1), 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)
+- Troca de slide: translateX com direction awareness (left/right)
+- Dot ativo: expand width 8→24px com spring curve
+- Mudança de cor: todos os elementos coloridos transitam em 0.4s ease
+
+## Acessibilidade
+- Dots com aria-label "Slide 1 de 3"
+- Botão "Pular" com aria-label "Pular introdução"
+- Suporte a gestos de swipe (touch-action: pan-x)
+- Contraste mínimo 4.5:1 em todos os textos
+
+## Stack
+React + Tailwind CSS (ou CSS-in-JS inline)
+Mobile-first, 430px max-width centralizado
+Importar Google Fonts: Playfair Display (400-700) + Inter (300-700)
