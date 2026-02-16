@@ -175,44 +175,59 @@ export default function HomeScreen() {
 
         {/* Body Composition Card */}
         <section 
-          onClick={() => setLocation("/biometrics")}
-          className="bg-white p-5 rounded-2xl border border-[#E8EBE5] shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+          className="bg-white p-5 rounded-2xl border border-[#E8EBE5] shadow-sm relative overflow-hidden"
         >
-           <div className="flex items-center justify-between mb-4">
-             <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide flex items-center gap-2">
-               <TrendingUp size={16} /> Composição
-             </h2>
-             <span className="text-xs font-semibold text-[#2F5641]">72.0 kg</span>
+           <div 
+             onClick={() => setLocation("/biometrics")}
+             className="cursor-pointer active:scale-[0.98] transition-transform"
+           >
+             <div className="flex items-center justify-between mb-4">
+               <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide flex items-center gap-2">
+                 <TrendingUp size={16} /> Composição
+               </h2>
+               <span className="text-xs font-semibold text-[#2F5641]">72.0 kg</span>
+             </div>
+             
+             <div className="h-[60px] w-full mb-4">
+               <ResponsiveContainer width="100%" height="100%">
+                 <AreaChart data={WEIGHT_DATA}>
+                   <defs>
+                     <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
+                       <stop offset="5%" stopColor="#3D7A8C" stopOpacity={0.3}/>
+                       <stop offset="95%" stopColor="#3D7A8C" stopOpacity={0}/>
+                     </linearGradient>
+                   </defs>
+                   <Area type="monotone" dataKey="weight" stroke="#3D7A8C" strokeWidth={2} fillOpacity={1} fill="url(#colorWeight)" />
+                 </AreaChart>
+               </ResponsiveContainer>
+             </div>
+             
+             <div className="flex justify-between border-t border-[#E8EBE5] pt-3">
+                <div className="text-center">
+                   <span className="block text-xs font-bold text-[#2F5641]">14.5%</span>
+                   <span className="text-[9px] text-[#8B9286] uppercase">Gordura</span>
+                </div>
+                <div className="text-center">
+                   <span className="block text-xs font-bold text-[#2F5641]">38.2kg</span>
+                   <span className="text-[9px] text-[#8B9286] uppercase">Músculo</span>
+                </div>
+                <div className="text-center">
+                   <span className="block text-xs font-bold text-[#2F5641]">61%</span>
+                   <span className="text-[9px] text-[#8B9286] uppercase">Água</span>
+                </div>
+             </div>
            </div>
-           
-           <div className="h-[60px] w-full mb-4">
-             <ResponsiveContainer width="100%" height="100%">
-               <AreaChart data={WEIGHT_DATA}>
-                 <defs>
-                   <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
-                     <stop offset="5%" stopColor="#3D7A8C" stopOpacity={0.3}/>
-                     <stop offset="95%" stopColor="#3D7A8C" stopOpacity={0}/>
-                   </linearGradient>
-                 </defs>
-                 <Area type="monotone" dataKey="weight" stroke="#3D7A8C" strokeWidth={2} fillOpacity={1} fill="url(#colorWeight)" />
-               </AreaChart>
-             </ResponsiveContainer>
-           </div>
-           
-           <div className="flex justify-between border-t border-[#E8EBE5] pt-3">
-              <div className="text-center">
-                 <span className="block text-xs font-bold text-[#2F5641]">14.5%</span>
-                 <span className="text-[9px] text-[#8B9286] uppercase">Gordura</span>
-              </div>
-              <div className="text-center">
-                 <span className="block text-xs font-bold text-[#2F5641]">38.2kg</span>
-                 <span className="text-[9px] text-[#8B9286] uppercase">Músculo</span>
-              </div>
-              <div className="text-center">
-                 <span className="block text-xs font-bold text-[#2F5641]">61%</span>
-                 <span className="text-[9px] text-[#8B9286] uppercase">Água</span>
-              </div>
-           </div>
+
+           {/* Quick Action Overlay Button */}
+           <button 
+             onClick={(e) => {
+               e.stopPropagation();
+               setLocation("/biometrics/scan");
+             }}
+             className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#2F5641] text-white flex items-center justify-center shadow-md active:scale-90 transition-transform"
+           >
+             <Plus size={16} />
+           </button>
         </section>
 
         {/* Water Card */}

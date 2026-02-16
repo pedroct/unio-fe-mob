@@ -154,17 +154,27 @@ export default function BiometricsScreen() {
             ))}
           </section>
 
-          {/* Connect Scale CTA */}
-          <button 
-            onClick={() => setLocation("/biometrics/devices")}
-            className="w-full bg-[#2F5641] text-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-transform"
-          >
-            <Scale size={20} />
-            <span className="font-semibold text-sm">Conectar Balança Bluetooth</span>
-          </button>
+          {/* Actions */}
+          <div className="flex gap-3">
+             <button 
+               onClick={() => setLocation("/biometrics/scan")}
+               className="flex-1 bg-[#2F5641] text-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/20 flex flex-col items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+             >
+               <Scale size={24} />
+               <span className="font-semibold text-sm">Iniciar Pesagem</span>
+             </button>
+
+             <button 
+               onClick={() => setLocation("/biometrics/devices")}
+               className="flex-1 bg-white text-[#2F5641] p-4 rounded-2xl border border-[#2F5641] flex flex-col items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+             >
+               <Activity size={24} />
+               <span className="font-semibold text-sm">Meus Dispositivos</span>
+             </button>
+          </div>
 
           {/* Manual Entry */}
-          <button className="w-full bg-white text-[#2F5641] p-4 rounded-2xl border border-[#2F5641] flex items-center justify-center gap-3 active:scale-[0.98] transition-transform">
+          <button className="w-full bg-white text-[#8B9286] p-4 rounded-2xl border border-[#E8EBE5] flex items-center justify-center gap-3 active:scale-[0.98] transition-transform hover:border-[#2F5641] hover:text-[#2F5641]">
             <Plus size={20} />
             <span className="font-semibold text-sm">Registrar Manualmente</span>
           </button>
