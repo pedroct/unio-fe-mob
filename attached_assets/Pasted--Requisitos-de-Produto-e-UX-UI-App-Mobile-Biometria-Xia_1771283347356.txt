@@ -1,0 +1,339 @@
+# Requisitos de Produto e UX/UI — App Mobile Biometria (Xiaomi Mi Scale 2)
+
+**Projeto:** UNIO
+**Módulo:** Biometria Mobile (consumo de `apps/biometria`)  
+**Versão:** 1.0  
+**Data:** 16 de Fevereiro de 2026  
+**Status:** Pronto para Discovery UX/UI + Desenvolvimento Frontend
+
+---
+
+## 1. Objetivo
+
+Definir os requisitos que a equipe de **Frontend Mobile** e **UX/UI** precisa para iniciar:
+
+1. Jornada de pesagem com balança Xiaomi no app;
+2. Telas e estados para mockups de alta fidelidade;
+3. Contratos de API para implementação sem ambiguidade;
+4. Critérios de aceite do MVP.
+
+Este documento é baseado na especificação técnica de biometria IoT e no backend já implementado.
+
+---
+
+## 2. Escopo do MVP Mobile
+
+### 2.1 Incluído
+
+- Autenticação JWT já existente no app;
+- Gestão de dispositivo de biometria (listar, vincular, desvincular);
+- Abertura da janela de pesagem (segurança anti-spoofing);
+- Acompanhamento de pesagem e confirmação de leitura recebida;
+- Histórico de leituras e estado atual (peso e tendência);
+- Gestão de meta de peso.
+
+### 2.2 Fora de escopo neste ciclo
+
+- Pairing BLE nativo dentro do app mobile;
+- Captura direta de advertisement BLE no app;
+- Edição de leitura já registrada;
+- Relatórios avançados e comparação entre múltiplos dispositivos;
+- Fluxos de fita métrica RF-BMF01 na UI principal (pode entrar em ciclo posterior).
+
+---
+
+## 3. Premissas técnicas (importantes para UX e FE)
+
+1. No MVP, a leitura Xiaomi é enviada por **scanner BLE externo** para `POST /api/biometria/registrar/xiaomi`.
+2. O app mobile **não envia peso diretamente** no fluxo Xiaomi padrão; ele abre a janela com JWT e aguarda ingestão.
+3. A ingestão sem JWT só é aceita quando existe janela ativa do dispositivo (`em_espera_ate`).
+4. O app precisa mostrar feedback temporal (contagem regressiva da janela) e estados de espera/erro.
+
+---
+
+## 4. Perfis e Jobs-to-be-done
+
+### 4.1 Usuário final (paciente/aluno)
+
+- “Quero pesar e ver meu progresso sem digitar dados manualmente.”
+- “Quero ter certeza de que a medição foi salva na minha conta.”
+
+### 4.2 Profissional (coach/nutri)
+
+- “Quero dados consistentes para acompanhar evolução semanal/mensal.”
+
+---
+
+## 5. Jornadas de usuário (MVP)
+
+## Jornada A — Primeiro vínculo da balança
+
+1. Usuário acessa “Dispositivos de Biometria”.
+2. Clica em “Vincular dispositivo”.
+3. Informa nome e MAC da balança (ou seleção assistida em ciclo futuro).
+4. Sistema confirma vínculo.
+5. Dispositivo aparece na lista com status.
+
+## Jornada B — Pesagem assistida (principal)
+
+1. Usuário seleciona o dispositivo Xiaomi vinculado.
+2. Clica “Iniciar pesagem”.
+3. App chama endpoint de preparar pesagem (janela de 5 min).
+4. App abre tela “Aguardando medição” com contagem regressiva.
+5. Usuário sobe na balança.
+6. Scanner envia leitura para backend.
+7. App detecta nova leitura (poll em estado/histórico).
+8. App mostra tela de sucesso com métricas principais e ação “Ver histórico”.
+
+## Jornada C — Falha de leitura
+
+1. Janela expira sem leitura.
+2. App mostra erro com CTA: “Tentar novamente”.
+3. App pode reabrir janela sem sair do fluxo.
+
+---
+
+## 6. Requisitos funcionais (Frontend + UX)
+
+### RF-MOB-001 — Tela de dispositivos biométricos
+
+- Listar dispositivos do usuário;
+- Exibir nome, tipo, status, última sincronização;
+- Ações: vincular, iniciar pesagem, desvincular.
+
+### RF-MOB-002 — Vincular dispositivo Xiaomi
+
+- Formulário mínimo:
+  - `nome` (obrigatório);
+  - `tipo` (`MISCALE2`);
+  - `mac_address` (opcional no backend, obrigatório no UX do Xiaomi);
+- Validação de formato MAC no app (`AA:BB:CC:DD:EE:FF`).
+
+### RF-MOB-003 — Iniciar janela de pesagem
+
+- Botão “Iniciar pesagem” por dispositivo;
+- Chamada JWT para abrir janela de 5 minutos;
+- Mostrar confirmação e iniciar contagem regressiva local.
+
+### RF-MOB-004 — Tela de espera de medição
+
+- Estado visual “Aguardando balança…”;
+- Timer regressivo (`05:00` até `00:00`);
+- Feedback de polling (sem ruído técnico);
+- CTA secundária: “Cancelar”.
+
+### RF-MOB-005 — Confirmação de leitura
+
+- Ao detectar leitura nova:
+  - exibir peso atual;
+  - mostrar IMC e gordura (quando disponíveis);
+  - exibir horário da medição;
+- CTA principal: “Concluir”.
+- CTA secundária: “Ver histórico”.
+
+### RF-MOB-006 — Histórico de leituras
+
+- Lista cronológica decrescente;
+- Filtros de período simples (7, 30, 90 dias);
+- Card com peso, IMC, gordura e data/hora;
+- Estado vazio com orientação.
+
+### RF-MOB-007 — Estado atual biométrico
+
+- Exibir:
+  - último peso;
+  - variação 7d;
+  - variação 30d;
+  - progresso de meta (quando houver).
+
+### RF-MOB-008 — Gestão de meta
+
+- Criar meta de peso;
+- Atualizar meta ativa;
+- Exibir diferença entre peso atual e meta.
+
+---
+
+## 7. Requisitos de UX/UI (mockups)
+
+### RUX-001 — Telas obrigatórias para mockup
+
+1. **Resumo Biometria** (estado atual);
+2. **Lista de Dispositivos**;
+3. **Vincular Dispositivo**;
+4. **Aguardando Pesagem** (timer + instruções);
+5. **Resultado da Pesagem**;
+6. **Histórico de Leituras**;
+7. **Meta de Peso** (criar/editar);
+8. **Estados de erro** (janela expirada, falha de comunicação).
+
+### RUX-002 — Estados por tela
+
+Cada mockup deve ter: `vazio`, `carregando`, `sucesso`, `erro`.
+
+### RUX-003 — Conteúdo textual (microcopy)
+
+- Linguagem clara e curta (PT-BR);
+- Evitar termos técnicos BLE;
+- Mensagens orientadas à ação (“Suba na balança agora”, “Tentar novamente”).
+
+### RUX-004 — Acessibilidade
+
+- Contraste mínimo AA;
+- Fonte escalável;
+- Alvos de toque adequados;
+- Não depender apenas de cor para status.
+
+### RUX-005 — Feedback temporal
+
+- Timer de janela visível na tela de espera;
+- Alertar aos 30s finais;
+- Encerramento automático quando expirar.
+
+---
+
+## 8. Contratos de API para o app (estado atual do backend)
+
+> Base path: `/api/biometria`
+
+### 8.1 Dispositivos
+
+**GET** `/dispositivos` (JWT)  
+Retorna lista de `DispositivoSchema`.
+
+**POST** `/dispositivos` (JWT)  
+Payload exemplo:
+
+```json
+{
+  "tipo": "MISCALE2",
+  "nome": "Minha Balança Xiaomi",
+  "categoria": "corporal",
+  "mac_address": "A4:C1:38:12:34:56"
+}
+```
+
+**POST** `/dispositivos/{dispositivo_id}/preparar-pesagem` (JWT)  
+Abre janela de 5 minutos para ingestão sem JWT no scanner.
+
+**DELETE** `/dispositivos/{dispositivo_id}` (JWT)
+
+---
+
+### 8.2 Leituras e estado
+
+**GET** `/estado-atual` (JWT)  
+Resumo atual (última leitura + variações + meta).
+
+**GET** `/historico?dias=30` (JWT)
+
+**GET** `/leituras?limite=10` (JWT)
+
+**GET** `/leituras/{leitura_id}` (JWT)
+
+**DELETE** `/leituras/{leitura_id}` (JWT)
+
+---
+
+### 8.3 Metas
+
+**GET** `/meta` (JWT)
+
+**POST** `/meta` (JWT)
+
+**PATCH** `/meta/{meta_id}` (JWT)
+
+---
+
+### 8.4 Endpoint de scanner (referência de integração)
+
+**POST** `/registrar/xiaomi` (**sem JWT**, uso do scanner BLE)
+
+Payload esperado do scanner:
+
+```json
+{
+  "mac_address": "A4:C1:38:12:34:56",
+  "peso": 79.15,
+  "impedancia": 386,
+  "data_registro": "2026-02-16T13:00:00Z"
+}
+```
+
+Regras importantes:
+- `impedancia` 0 ou 65534 é tratada como inválida e convertida para `null`;
+- sem janela ativa, backend retorna erro de negócio.
+
+---
+
+## 9. Requisitos não funcionais do app
+
+### RNF-MOB-001 — Polling durante pesagem
+
+- Poll recomendado: a cada 2–3s na tela de espera;
+- Encerrar polling ao sucesso, cancelamento ou expiração.
+
+### RNF-MOB-002 — Resiliência de rede
+
+- Retentativa curta em erros transitórios;
+- Mensagem amigável para timeout/conexão.
+
+### RNF-MOB-003 — Segurança
+
+- JWT obrigatório em endpoints de app;
+- Não exibir MAC completo em telas públicas (mascarar quando possível);
+- Não logar token em debug de produção.
+
+### RNF-MOB-004 — Observabilidade
+
+- Eventos analíticos mínimos:
+  - `biometria_pesagem_iniciada`;
+  - `biometria_pesagem_sucesso`;
+  - `biometria_pesagem_timeout`;
+  - `biometria_dispositivo_vinculado`.
+
+---
+
+## 10. Critérios de aceite (MVP)
+
+1. Usuário consegue vincular Xiaomi e visualizar na lista.
+2. Usuário consegue iniciar pesagem e ver timer da janela.
+3. Com leitura enviada pelo scanner, app confirma sucesso sem refresh manual.
+4. Histórico e estado atual refletem a nova leitura.
+5. Em janela expirada, app mostra erro claro e CTA de nova tentativa.
+6. Fluxos principais possuem mockups completos (vazio/carregando/sucesso/erro).
+
+---
+
+## 11. Entregáveis esperados da equipe UX/UI
+
+1. Fluxo navegável completo (protótipo);
+2. Biblioteca de componentes usados no módulo Biometria;
+3. Especificação de microcopy e estados;
+4. Hand-off com medidas, espaçamentos e comportamento dos componentes.
+
+---
+
+## 12. Entregáveis esperados da LLM/Frontend Mobile
+
+1. Implementação das telas e rotas descritas;
+2. Camada de serviço consumindo endpoints existentes;
+3. Máquina de estados da jornada de pesagem;
+4. Tratamento de erros e fallback de rede;
+5. Testes de interface dos fluxos críticos (pesagem e histórico).
+
+---
+
+## 13. Backlog sugerido pós-MVP
+
+1. Pairing BLE nativo no app (sem scanner externo);
+2. Fluxo unificado Xiaomi + RF-BMF01 no mesmo dashboard;
+3. Sincronização incremental avançada para leituras corporais;
+4. Notificações push para confirmação de pesagem.
+
+---
+
+## 14. Observações de alinhamento
+
+- Este documento descreve o **que o mobile e UX/UI precisam para iniciar imediatamente** com backend atual.
+- Mudanças estruturais de API devem ser tratadas por versão (`v2`) para não quebrar o fluxo MVP.

@@ -1,0 +1,369 @@
+# UX Writing — Biometria Mobile (Xiaomi Mi Scale 2)
+
+Projeto: UNIO
+Módulo: Biometria Mobile  
+Versão: 1.0  
+Data: 16 de Fevereiro de 2026  
+Status: Pronto para handoff (UX/UI + Frontend)
+
+---
+
+## 1. Diretrizes de voz e tom
+
+### Voz da marca
+- Clara
+- Humana
+- Objetiva
+- Confiável
+
+### Tom por contexto
+- Fluxo normal: calmo e orientativo
+- Confirmação de sucesso: positivo e direto
+- Erro: empático, sem culpar o usuário
+- Estado de espera: tranquilizador e com instruções simples
+
+### Princípios de escrita
+1. Frases curtas (ideal até 90 caracteres por linha de interface).
+2. Um objetivo por mensagem.
+3. Evitar termos técnicos (BLE, JWT, ingestão).
+4. Sempre indicar próximo passo em mensagens de erro.
+5. Usar linguagem inclusiva e natural em PT-BR.
+
+---
+
+## 2. Glossário de termos (consistência)
+
+- Preferir “pesagem” em vez de “captura”.
+- Preferir “balança” em vez de “dispositivo” quando for Xiaomi no contexto da pessoa usuária.
+- Preferir “medição salva” em vez de “ingestão concluída”.
+- Preferir “histórico” em vez de “logs”.
+- Preferir “iniciar pesagem” em vez de “abrir janela”.
+
+---
+
+## 3. Copy por tela
+
+## 3.1 Tela: Resumo de Biometria
+
+### Título
+- Seu progresso corporal
+
+### Subtítulo
+- Acompanhe peso, variações e meta em um só lugar.
+
+### Cards
+- Último peso
+- Variação em 7 dias
+- Variação em 30 dias
+- Meta atual
+- Diferença para meta
+
+### CTA principal
+- Iniciar pesagem
+
+### CTA secundário
+- Ver histórico
+
+### Estado vazio
+- Título: Você ainda não tem pesagens
+- Texto: Faça sua primeira pesagem para acompanhar sua evolução.
+- Botão: Iniciar primeira pesagem
+
+---
+
+## 3.2 Tela: Lista de Dispositivos
+
+### Título
+- Dispositivos de biometria
+
+### Subtítulo
+- Gerencie as balanças vinculadas à sua conta.
+
+### Card de dispositivo
+- Nome do dispositivo
+- Tipo: Xiaomi Mi Scale 2
+- Status: Ativo | Pendente | Desativado
+- Última sincronização: Hoje às 08:45
+
+### Ações no card
+- Botão primário: Iniciar pesagem
+- Ação secundária: Desvincular
+
+### CTA global
+- Vincular dispositivo
+
+### Estado vazio
+- Título: Nenhum dispositivo vinculado
+- Texto: Vincule sua balança para registrar pesagens automáticas.
+- Botão: Vincular dispositivo
+
+---
+
+## 3.3 Tela: Vincular Dispositivo
+
+### Título
+- Vincular balança
+
+### Subtítulo
+- Preencha os dados para conectar sua Xiaomi Mi Scale 2.
+
+### Campos
+- Nome da balança
+  - Placeholder: Ex.: Balança da academia
+- Endereço MAC
+  - Placeholder: AA:BB:CC:DD:EE:FF
+  - Texto de ajuda: Você encontra esse código no scanner ou na etiqueta do equipamento.
+
+### Botões
+- Primário: Vincular balança
+- Secundário: Cancelar
+
+### Mensagens de validação
+- Nome obrigatório: Informe um nome para a balança.
+- MAC obrigatório: Informe o endereço MAC da balança.
+- MAC inválido: Formato inválido. Use AA:BB:CC:DD:EE:FF.
+
+### Sucesso
+- Toast: Balança vinculada com sucesso.
+
+### Erro
+- Toast: Não foi possível vincular agora. Tente novamente.
+
+---
+
+## 3.4 Tela: Aguardando Pesagem
+
+### Título
+- Aguardando sua pesagem
+
+### Subtítulo
+- Suba na balança para registrar a medição.
+
+### Instruções rápidas
+- Fique parada por alguns segundos.
+- Mantenha os pés secos e bem apoiados.
+- Aguarde a confirmação no app.
+
+### Timer
+- Rótulo: Tempo restante
+- Formato: 05:00
+
+### Alertas de tempo
+- Aos 30 segundos: Falta pouco. Suba na balança agora.
+- Ao expirar: Tempo encerrado.
+
+### Botões
+- Primário (enquanto ativo): Estou na balança
+- Secundário: Cancelar
+
+### Estado de polling
+- Texto discreto: Procurando sua medição...
+
+### Erro de expiração
+- Título: Não recebemos sua pesagem a tempo
+- Texto: Vamos tentar de novo? Inicie uma nova pesagem.
+- Botão primário: Tentar novamente
+- Botão secundário: Voltar
+
+---
+
+## 3.5 Tela: Resultado da Pesagem
+
+### Título
+- Pesagem registrada
+
+### Subtítulo
+- Sua medição foi salva com sucesso.
+
+### Bloco principal
+- Peso atual
+- IMC
+- Gordura corporal
+- Horário da pesagem
+
+### Mensagem contextual
+- Ótimo trabalho. Continue registrando para acompanhar sua evolução.
+
+### Botões
+- Primário: Concluir
+- Secundário: Ver histórico
+
+---
+
+## 3.6 Tela: Histórico de Leituras
+
+### Título
+- Histórico de pesagens
+
+### Filtros
+- 7 dias
+- 30 dias
+- 90 dias
+
+### Item de lista
+- Peso: 79,15 kg
+- IMC: 24,4
+- Gordura: 18,9%
+- Data e hora: 16 fev, 08:42
+
+### Estado vazio
+- Título: Sem pesagens neste período
+- Texto: Selecione outro período ou faça uma nova pesagem.
+- Botão: Iniciar pesagem
+
+---
+
+## 3.7 Tela: Meta de Peso
+
+### Título
+- Meta de peso
+
+### Subtítulo
+- Defina um objetivo e acompanhe seu progresso.
+
+### Campo
+- Peso alvo (kg)
+  - Placeholder: Ex.: 75,0
+
+### Mensagens
+- Progresso: Faltam 2,4 kg para sua meta.
+- Meta atingida: Parabéns! Você alcançou sua meta atual.
+
+### Botões
+- Primário (criar): Salvar meta
+- Primário (editar): Atualizar meta
+- Secundário: Cancelar
+
+### Validação
+- Valor inválido: Informe um peso válido em kg.
+
+---
+
+## 4. Mensagens globais (toasts, banners e modais)
+
+## 4.1 Sucesso
+- Pesagem iniciada. Você tem 5 minutos para concluir.
+- Medição salva com sucesso.
+- Meta atualizada com sucesso.
+- Dispositivo desvinculado.
+
+## 4.2 Erro de rede
+- Sem conexão no momento. Verifique sua internet.
+- Não foi possível concluir agora. Tente novamente em instantes.
+
+## 4.3 Erro de regra de negócio
+- Nenhuma pesagem ativa para este dispositivo.
+- Essa balança não está disponível para sua conta.
+- Limite de tentativas atingido. Aguarde alguns segundos.
+
+## 4.4 Confirmações
+- Modal título: Desvincular balança?
+- Modal texto: Você poderá vincular novamente quando quiser.
+- Botões: Desvincular | Manter vinculada
+
+---
+
+## 5. Copy para estados de carregamento
+
+- Carregando seus dados...
+- Atualizando histórico...
+- Iniciando pesagem...
+- Salvando sua meta...
+
+---
+
+## 6. Copy para estados de erro por endpoint
+
+## Preparar pesagem
+- Erro: Não conseguimos iniciar a pesagem agora.
+- Ação sugerida: Tentar novamente
+
+## Estado atual
+- Erro: Não foi possível carregar seu resumo.
+- Ação sugerida: Recarregar
+
+## Histórico
+- Erro: Não conseguimos atualizar seu histórico.
+- Ação sugerida: Tentar novamente
+
+## Meta
+- Erro: Não foi possível salvar sua meta.
+- Ação sugerida: Revisar e tentar novamente
+
+---
+
+## 7. Empty states (catálogo rápido)
+
+1. Sem dispositivo
+- Título: Vincule sua primeira balança
+- Texto: Em menos de 1 minuto você já pode começar a registrar.
+- CTA: Vincular dispositivo
+
+2. Sem pesagens
+- Título: Seu histórico começa na primeira medição
+- Texto: Faça uma pesagem para visualizar seu progresso.
+- CTA: Iniciar pesagem
+
+3. Sem meta
+- Título: Defina seu objetivo
+- Texto: Metas ajudam você a acompanhar a evolução com clareza.
+- CTA: Criar meta
+
+---
+
+## 8. Microcopy de acessibilidade
+
+### Labels recomendados
+- Botão iniciar pesagem: Iniciar pesagem com a balança selecionada
+- Timer: Tempo restante para concluir a pesagem
+- Card de peso: Peso atual em quilogramas
+
+### Mensagens curtas para leitores de tela
+- Pesagem iniciada. Tempo restante de cinco minutos.
+- Medição registrada com sucesso.
+- Erro ao iniciar pesagem. Tente novamente.
+
+---
+
+## 9. Push notifications (opcional pós-MVP)
+
+### Sucesso
+- Título: Pesagem registrada
+- Corpo: Sua nova medição já está no histórico.
+
+### Falha/expiração
+- Título: Pesagem não concluída
+- Corpo: O tempo terminou. Toque para tentar novamente.
+
+---
+
+## 10. Eventos de analytics com copy de contexto
+
+- biometria_pesagem_iniciada
+  - contexto_ui: usuario iniciou jornada de pesagem
+
+- biometria_pesagem_sucesso
+  - contexto_ui: medição recebida e exibida na tela de sucesso
+
+- biometria_pesagem_timeout
+  - contexto_ui: janela expirou sem leitura
+
+- biometria_dispositivo_vinculado
+  - contexto_ui: vínculo criado com sucesso na tela de dispositivos
+
+---
+
+## 11. Checklist de revisão de texto (QA de UX Writing)
+
+- Termos consistentes em todas as telas.
+- Sem jargão técnico para pessoa usuária final.
+- Todos os erros têm próximo passo claro.
+- CTAs em verbo de ação.
+- Mensagens cabem no layout sem truncamento crítico.
+
+---
+
+Documento pronto para uso em:
+- Mockups e protótipos (UX/UI);
+- Implementação de strings no app (Frontend Mobile);
+- Planejamento de QA funcional e de conteúdo.

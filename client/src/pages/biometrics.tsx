@@ -155,7 +155,10 @@ export default function BiometricsScreen() {
           </section>
 
           {/* Connect Scale CTA */}
-          <button className="w-full bg-[#2F5641] text-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-transform">
+          <button 
+            onClick={() => setLocation("/biometrics/devices")}
+            className="w-full bg-[#2F5641] text-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-transform"
+          >
             <Scale size={20} />
             <span className="font-semibold text-sm">Conectar Balança Bluetooth</span>
           </button>

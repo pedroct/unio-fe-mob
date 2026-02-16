@@ -10,6 +10,9 @@ import OnboardingScreen from "@/pages/onboarding";
 import WelcomeScreen from "@/pages/welcome";
 import HomeScreen from "@/pages/home";
 import BiometricsScreen from "@/pages/biometrics";
+import BiometricsDevicesScreen from "@/pages/biometrics/devices";
+import BiometricsLinkScreen from "@/pages/biometrics/link";
+import BiometricsScanScreen from "@/pages/biometrics/scan";
 
 function Router() {
   return (
@@ -20,6 +23,9 @@ function Router() {
       <Route path="/welcome" component={WelcomeScreen} />
       <Route path="/home" component={HomeScreen} />
       <Route path="/biometrics" component={BiometricsScreen} />
+      <Route path="/biometrics/devices" component={BiometricsDevicesScreen} />
+      <Route path="/biometrics/link" component={BiometricsLinkScreen} />
+      <Route path="/biometrics/scan" component={BiometricsScanScreen} />
       <Route component={NotFound} />
     </Switch>
   );
