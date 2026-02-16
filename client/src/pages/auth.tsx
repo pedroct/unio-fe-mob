@@ -137,9 +137,9 @@ export default function AuthScreen() {
                 placeholder="seuemail@exemplo.com"
                 className="w-full bg-[#F5F3EE] border border-[#E8EBE5] rounded-xl px-4 py-3.5 text-[#2F5641] placeholder-[#8B9286] focus:outline-none focus:border-[#C7AE6A] focus:ring-1 focus:ring-[#C7AE6A] transition-all text-sm"
               />
-              {activeForm.formState.errors.email && (
+              {(activeForm.formState.errors as any).email && (
                 <p className="text-[#D97952] text-xs ml-1 flex items-center gap-1">
-                  <X size={12} /> {activeForm.formState.errors.email?.message as string}
+                  <X size={12} /> {(activeForm.formState.errors as any).email?.message as string}
                 </p>
               )}
             </div>
@@ -164,9 +164,9 @@ export default function AuthScreen() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {activeForm.formState.errors.password && (
+              {(activeForm.formState.errors as any).password && (
                 <p className="text-[#D97952] text-xs ml-1 flex items-center gap-1">
-                  <X size={12} /> {activeForm.formState.errors.password?.message as string}
+                  <X size={12} /> {(activeForm.formState.errors as any).password?.message as string}
                 </p>
               )}
             </div>
@@ -192,7 +192,7 @@ export default function AuthScreen() {
                     {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
-                {activeForm.formState.errors.confirmPassword && (
+                {(activeForm.formState.errors as any).confirmPassword && (
                   <p className="text-[#D97952] text-xs ml-1 flex items-center gap-1">
                     <X size={12} /> {(activeForm.formState.errors as any).confirmPassword?.message as string}
                   </p>

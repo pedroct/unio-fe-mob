@@ -13,6 +13,8 @@ import BiometricsScreen from "@/pages/biometrics";
 import BiometricsDevicesScreen from "@/pages/biometrics/devices";
 import BiometricsLinkScreen from "@/pages/biometrics/link";
 import BiometricsScanScreen from "@/pages/biometrics/scan";
+import NutritionScreen from "@/pages/nutrition";
+import NutritionAddScreen from "@/pages/nutrition/add";
 
 function Router() {
   return (
@@ -22,10 +24,17 @@ function Router() {
       <Route path="/onboarding" component={OnboardingScreen} />
       <Route path="/welcome" component={WelcomeScreen} />
       <Route path="/home" component={HomeScreen} />
+      
+      {/* Nutrition Module */}
+      <Route path="/nutrition" component={NutritionScreen} />
+      <Route path="/nutrition/add" component={NutritionAddScreen} />
+      
+      {/* Biometrics Module */}
       <Route path="/biometrics" component={BiometricsScreen} />
       <Route path="/biometrics/devices" component={BiometricsDevicesScreen} />
       <Route path="/biometrics/link" component={BiometricsLinkScreen} />
       <Route path="/biometrics/scan" component={BiometricsScanScreen} />
+      
       <Route component={NotFound} />
     </Switch>
   );
