@@ -2,22 +2,25 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import unioIcon from "@assets/icone_1771280291997.png";
 
-export default function SplashScreen() {
+export default function SplashScreen({ onComplete }: { onComplete?: () => void }) {
   const [phase, setPhase] = useState<"loading" | "ready" | "exit">("loading");
-  const [, setLocation] = useLocation();
 
   useEffect(() => {
     // Sequence timing
     const t1 = setTimeout(() => setPhase("ready"), 800); // Wait 800ms before showing content
     const t2 = setTimeout(() => setPhase("exit"), 3200); // Start exit phase after sufficient display time
-    const t3 = setTimeout(() => setLocation("/auth"), 3800); // Navigate after exit animation
+    const t3 = setTimeout(() => {
+      if (onComplete) {
+        onComplete();
+      }
+    }, 3800); // Navigate after exit animation
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [setLocation]);
+  }, [onComplete]);
 
   return (
     <div 

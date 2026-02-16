@@ -15,6 +15,7 @@ import BiometricsLinkScreen from "@/pages/biometrics/link";
 import BiometricsScanScreen from "@/pages/biometrics/scan";
 import NutritionScreen from "@/pages/nutrition";
 import NutritionAddScreen from "@/pages/nutrition/add";
+import { useState } from "react";
 
 function Router() {
   return (
@@ -41,6 +42,12 @@ function Router() {
 }
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  if (showSplash) {
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
