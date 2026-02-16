@@ -251,14 +251,17 @@ export default function HomeScreen() {
                <h2 className="text-xs font-bold uppercase tracking-wide">Hidratação</h2>
              </div>
              <p className="text-2xl font-display mb-1">1.25 <span className="text-sm opacity-70">/ 2.5 L</span></p>
-             <div className="flex gap-1">
+             <div className="flex gap-1 mt-2">
                {[1, 2, 3, 4, 5].map(i => (
                  <div key={i} className={`w-3 h-3 rounded-full border border-white ${i <= 3 ? "bg-white" : "bg-transparent"}`} />
                ))}
              </div>
            </div>
            
-           <button className="bg-white text-[#3D7A8C] w-12 h-12 rounded-full flex items-center justify-center shadow-md hover:scale-105 transition-transform">
+           <button 
+             onClick={() => alert("Módulo de Hidratação em breve!")}
+             className="bg-white text-[#3D7A8C] w-12 h-12 rounded-full flex items-center justify-center shadow-md hover:scale-105 active:scale-90 transition-transform"
+           >
              <Plus size={24} strokeWidth={3} />
            </button>
         </section>
