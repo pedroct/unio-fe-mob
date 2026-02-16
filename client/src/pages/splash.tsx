@@ -10,7 +10,7 @@ export default function SplashScreen() {
     // Sequence timing
     const t1 = setTimeout(() => setPhase("ready"), 800); // Wait 800ms before showing content
     const t2 = setTimeout(() => setPhase("exit"), 3200); // Start exit phase after sufficient display time
-    const t3 = setTimeout(() => setLocation("/onboarding"), 3800); // Navigate after exit animation
+    const t3 = setTimeout(() => setLocation("/auth"), 3800); // Navigate after exit animation
 
     return () => {
       clearTimeout(t1);

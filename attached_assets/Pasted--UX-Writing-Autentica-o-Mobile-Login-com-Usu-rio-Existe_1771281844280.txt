@@ -1,0 +1,194 @@
+# UX Writing — Autenticação Mobile (Login com Usuário Existente)
+
+Projeto: UNIO
+Módulo: Autenticação Mobile  
+Versão: 1.0  
+Data: 16 de Fevereiro de 2026  
+Status: Pronto para UX/UI + Frontend
+
+---
+
+## 1. Escopo deste copy
+
+Este material cobre apenas:
+- Tela de login;
+- Validações de formulário;
+- Mensagens de erro/sucesso;
+- Estados de carregamento e sessão.
+
+Não inclui neste ciclo:
+- Cadastro de conta;
+- Login social (SSO: Apple/Google);
+- Recuperação de senha com fluxo completo de reset.
+
+---
+
+## 2. Voz e tom
+
+### Voz
+- Clara
+- Objetiva
+- Humana
+- Confiável
+
+### Tom por situação
+- Entrada: acolhedor e direto
+- Erro de credencial: neutro, sem culpar
+- Erro técnico: transparente e orientativo
+- Sessão expirada: informativo, com ação imediata
+
+### Princípios
+1. Frases curtas e acionáveis.
+2. Um objetivo por mensagem.
+3. Sem jargão técnico para usuário final.
+4. Sempre oferecer próximo passo em erros.
+
+---
+
+## 3. Tela de autenticação (login)
+
+## 3.1 Headline e contexto
+
+- Título principal: Login
+- Subtítulo: Acesse sua conta para continuar no UNIO.
+
+## 3.2 Campos
+
+### Campo: E-mail
+- Label: E-mail
+- Placeholder: seuemail@exemplo.com
+- Ajuda opcional: Use o e-mail cadastrado no UNIO.
+
+### Campo: Senha
+- Label: Senha
+- Placeholder: Digite sua senha
+- Ação no campo: Mostrar | Ocultar
+
+## 3.3 Ações da tela
+
+- Botão primário: Acessar conta
+- Link secundário (opcional): Obter ajuda
+
+> Observação: como não haverá cadastro nem SSO, não exibir links “Criar conta”, “Entrar com Apple” ou “Entrar com Google”.
+
+---
+
+## 4. Estados da interface
+
+## 4.1 Estado inicial
+- Título: Login
+- Subtítulo: Acesse sua conta para continuar no UNIO.
+- Botão: Acessar conta (desabilitado até preencher campos válidos)
+
+## 4.2 Estado de carregamento
+- Botão carregando: Acessando conta...
+- Mensagem discreta opcional: Validando suas credenciais.
+
+## 4.3 Estado de sucesso
+- Toast: Login realizado com sucesso.
+- Transição: redirecionar para Home
+
+## 4.4 Estado de erro de credencial
+- Mensagem inline/topo: Não foi possível entrar. Confira e-mail e senha e tente de novo.
+
+## 4.5 Estado de erro de rede
+- Mensagem: Você está sem conexão. Verifique sua internet e tente de novo.
+- Botão auxiliar opcional: Tentar de novo
+
+## 4.6 Estado de erro do servidor
+- Mensagem: Não foi possível acessar agora. Tente de novo em instantes.
+
+## 4.7 Estado de sessão expirada
+- Banner/alerta: Sua sessão expirou. Acesse sua conta novamente.
+- Botão: Acessar conta
+
+---
+
+## 5. Validações e mensagens
+
+## 5.1 Campo e-mail
+- Obrigatório vazio: Informe seu e-mail.
+- Formato inválido: Digite um e-mail válido.
+
+## 5.2 Campo senha
+- Obrigatório vazio: Informe sua senha.
+- Muito curta (se validar no cliente): A senha deve ter pelo menos 6 caracteres.
+
+## 5.3 Erro de autenticação
+- Padrão: E-mail ou senha incorretos. Revise os dados e tente de novo.
+
+## 5.4 Erro de tentativas excessivas (quando backend retornar limite)
+- Mensagem: Muitas tentativas agora. Aguarde alguns segundos e tente de novo.
+
+---
+
+## 6. Microcopy para componentes auxiliares
+
+## 6.1 Toggle de senha
+- Estado oculto: Mostrar
+- Estado visível: Ocultar
+
+## 6.2 CTA de suporte
+- Link: Obter ajuda
+- Bottom sheet/modal:
+  - Título: Problema de acesso
+  - Texto: Fale com o suporte para recuperar o acesso da sua conta.
+  - Botão principal: Falar com suporte
+  - Botão secundário: Cancelar
+
+---
+
+## 7. Mensagens globais (toasts/banners)
+
+### Sucesso
+- Login realizado com sucesso.
+
+### Erros comuns
+- E-mail ou senha incorretos. Revise os dados e tente de novo.
+- Você está sem conexão. Verifique sua internet e tente de novo.
+- Não foi possível acessar agora. Tente de novo em instantes.
+- Sua sessão expirou. Acesse sua conta novamente.
+
+---
+
+## 8. Acessibilidade (copy)
+
+### Labels para leitores de tela
+- Campo de e-mail
+- Campo de senha
+- Botão acessar conta
+- Botão mostrar senha
+
+### Mensagens de apoio
+- Não foi possível entrar. Confira e-mail e senha e tente de novo.
+- Login realizado com sucesso.
+
+### Boas práticas
+- Não depender apenas de cor para indicar erro.
+- Associar mensagem de erro ao campo correto.
+
+---
+
+## 9. Eventos de analytics recomendados
+
+- auth_login_tela_visualizada
+- auth_login_tentativa
+- auth_login_sucesso
+- auth_login_falha_credencial
+- auth_login_falha_rede
+- auth_sessao_expirada
+
+---
+
+## 10. Checklist de QA de conteúdo
+
+- Não há qualquer menção a cadastro ou SSO.
+- Erros seguem fórmula: o que aconteceu + o que fazer agora.
+- CTAs estão em infinitivo, com até 3 palavras quando possível.
+- Vocabulário de ação está padronizado (Salvar, Continuar, Cancelar, Excluir, Tentar de novo).
+- Campos e mensagens estão em PT-BR consistente.
+- Texto cabe em telas pequenas sem truncamento crítico.
+
+---
+
+Documento pronto para implementação de strings no app mobile e para mockups da tela de autenticação.

@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import SplashScreen from "@/pages/splash";
+import AuthScreen from "@/pages/auth";
 import OnboardingScreen from "@/pages/onboarding";
 import WelcomeScreen from "@/pages/welcome";
 
@@ -12,6 +13,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={SplashScreen} />
+      <Route path="/auth" component={AuthScreen} />
       <Route path="/onboarding" component={OnboardingScreen} />
       <Route path="/welcome" component={WelcomeScreen} />
       <Route component={NotFound} />
