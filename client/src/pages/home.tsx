@@ -2,6 +2,7 @@ import Layout from "@/components/layout";
 import { Bell, ChevronRight, Droplets, Plus, TrendingUp, Dumbbell } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { motion } from "framer-motion";
+import { useLocation } from "wouter";
 
 // Mock Data
 const WEIGHT_DATA = [
@@ -15,6 +16,8 @@ const WEIGHT_DATA = [
 ];
 
 export default function HomeScreen() {
+  const [, setLocation] = useLocation();
+
   return (
     <Layout>
       {/* Header */}
@@ -101,7 +104,12 @@ export default function HomeScreen() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide">Últimas Refeições</h2>
-            <button className="text-[11px] font-semibold text-[#C7AE6A] hover:underline">Ver tudo</button>
+            <button 
+              onClick={() => setLocation("/nutrition")}
+              className="text-[11px] font-semibold text-[#C7AE6A] hover:underline"
+            >
+              Ver tudo
+            </button>
           </div>
           
           <div className="space-y-3">
