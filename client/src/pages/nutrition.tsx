@@ -1,8 +1,7 @@
 import Layout from "@/components/layout";
-import { ChevronLeft, Calendar, Plus, Package, Scale, Trash2 } from "lucide-react";
+import { ChevronLeft, Calendar, Plus, Package, Scale } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 
@@ -13,42 +12,19 @@ const MEAL_SLOTS = [
   { id: "dinner", name: "Jantar" },
 ];
 
-const DEFAULT_GOALS = { kcal: 2200, proteina: 160, carboidrato: 200, gordura: 70 };
-
 interface ResumoHoje {
-  total_calorias?: number;
-  total_proteinas?: number;
-  total_carboidratos?: number;
-  total_gorduras?: number;
-  meta_calorias?: number;
-  meta_proteinas?: number;
-  meta_carboidratos?: number;
-  meta_gorduras?: number;
-  totalCalories?: number;
-  totalProtein?: number;
-  totalCarbs?: number;
-  totalFat?: number;
-  meals?: Record<string, { items: any[]; calories: number; protein: number; carbs: number; fat: number }>;
-  refeicoes?: Record<string, { itens: any[]; calorias: number; proteinas: number; carboidratos: number; gorduras: number }>;
-}
-
-function extractSummary(s: ResumoHoje | undefined) {
-  const cal = s?.total_calorias ?? s?.totalCalories ?? 0;
-  const prot = s?.total_proteinas ?? s?.totalProtein ?? 0;
-  const carbs = s?.total_carboidratos ?? s?.totalCarbs ?? 0;
-  const fat = s?.total_gorduras ?? s?.totalFat ?? 0;
-  const metaCal = s?.meta_calorias ?? DEFAULT_GOALS.kcal;
-  const metaProt = s?.meta_proteinas ?? DEFAULT_GOALS.proteina;
-  const metaCarbs = s?.meta_carboidratos ?? DEFAULT_GOALS.carboidrato;
-  const metaFat = s?.meta_gorduras ?? DEFAULT_GOALS.gordura;
-  return { cal, prot, carbs, fat, metaCal, metaProt, metaCarbs, metaFat };
+  data: string;
+  consumido: { calorias: number; carboidratos: number; proteinas: number; gorduras: number; fibras: number };
+  meta: { calorias: number; carboidratos: number; proteinas: number; gorduras: number };
+  saldo: { calorias: number; carboidratos: number; proteinas: number; gorduras: number };
+  percentual_meta: { calorias: number; carboidratos: number; proteinas: number; gorduras: number };
+  total_registros: number;
+  calculo: { tmb: number; get: number; deficit_aplicado: number };
 }
 
 export default function NutritionScreen() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
 
   const { data: summary, isLoading } = useQuery<ResumoHoje>({
     queryKey: ["nutricao", "resumo-hoje"],
@@ -60,49 +36,18 @@ export default function NutritionScreen() {
     enabled: !!user,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (entryId: string) => {
-      const res = await apiFetch(`/api/nutricao/diario/registros/${entryId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Erro ao remover registro");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["nutricao", "resumo-hoje"] });
-    },
-  });
-
-  const { cal: totalCal, prot: totalProt, carbs: totalCarbs, fat: totalFat, metaCal, metaProt, metaCarbs, metaFat } = extractSummary(summary);
-  const available = metaCal - totalCal;
-  const proteinPct = Math.min(100, (totalProt / metaProt) * 100);
-  const carbsPct = Math.min(100, (totalCarbs / metaCarbs) * 100);
-  const fatPct = Math.min(100, (totalFat / metaFat) * 100);
-
-  const meals = summary?.meals || summary?.refeicoes || {};
-
-  function getMealData(slotId: string) {
-    const m = (meals as any)?.[slotId];
-    if (!m) return { items: [], calories: 0 };
-    return {
-      items: m.items || m.itens || [],
-      calories: m.calories ?? m.calorias ?? 0,
-    };
-  }
-
-  function itemName(item: any) {
-    return item?.food?.name || item?.alimento?.descricao || item?.descricao || "Alimento";
-  }
-
-  function itemQty(item: any) {
-    return item?.quantityG ?? item?.quantidade_g ?? item?.quantidade ?? 0;
-  }
-
-  function itemKcal(item: any) {
-    if (item?.calorias != null) return Math.round(item.calorias);
-    const food = item?.food || item?.alimento;
-    if (!food) return 0;
-    const serving = food.servingSizeG || food.porcao_g || 100;
-    const ratio = itemQty(item) / serving;
-    return Math.round((food.caloriesKcal || food.calorias || 0) * ratio);
-  }
+  const totalCal = summary?.consumido?.calorias ?? 0;
+  const totalProt = summary?.consumido?.proteinas ?? 0;
+  const totalCarbs = summary?.consumido?.carboidratos ?? 0;
+  const totalFat = summary?.consumido?.gorduras ?? 0;
+  const metaCal = summary?.meta?.calorias ?? 2200;
+  const metaProt = summary?.meta?.proteinas ?? 160;
+  const metaCarbs = summary?.meta?.carboidratos ?? 200;
+  const metaFat = summary?.meta?.gorduras ?? 70;
+  const available = summary?.saldo?.calorias ?? (metaCal - totalCal);
+  const proteinPct = Math.min(100, summary?.percentual_meta?.proteinas ?? (totalProt / metaProt) * 100);
+  const carbsPct = Math.min(100, summary?.percentual_meta?.carboidratos ?? (totalCarbs / metaCarbs) * 100);
+  const fatPct = Math.min(100, summary?.percentual_meta?.gorduras ?? (totalFat / metaFat) * 100);
 
   return (
     <Layout>
@@ -199,72 +144,40 @@ export default function NutritionScreen() {
           </section>
 
           <div className="space-y-4">
-            {MEAL_SLOTS.map((slot) => {
-              const mealData = getMealData(slot.id);
-              const items = mealData.items;
-              const mealCalories = mealData.calories;
-
-              return (
-                <div key={slot.id} className="bg-white rounded-2xl border border-[#E8EBE5] overflow-hidden shadow-sm" data-testid={`card-meal-${slot.id}`}>
-                  <div className="p-4 flex items-center justify-between bg-[#F5F3EE]/50">
-                    <h3 className="font-semibold text-[#2F5641]">{slot.name}</h3>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-[#8B9286]" data-testid={`text-meal-calories-${slot.id}`}>{mealCalories} kcal</span>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => setLocation("/nutrition/scale")}
-                          className="w-6 h-6 rounded-full bg-[#648D4A] flex items-center justify-center text-white hover:bg-[#52743C] transition-colors"
-                          title="Usar Balança"
-                        >
-                          <Scale size={12} strokeWidth={2.5} />
-                        </button>
-                        <button
-                          onClick={() => setLocation(`/nutrition/add?slot=${slot.id}`)}
-                          className="w-6 h-6 rounded-full bg-[#C7AE6A] flex items-center justify-center text-white hover:bg-[#AD8C48] transition-colors"
-                          title="Adicionar Manualmente"
-                          data-testid={`button-add-${slot.id}`}
-                        >
-                          <Plus size={14} strokeWidth={3} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {items.length > 0 ? (
-                    <div className="px-4 pb-4 pt-1">
-                      {items.map((item: any) => (
-                        <div key={item.id} className="flex justify-between items-center py-3 border-b border-[#E8EBE5] last:border-0" data-testid={`row-meal-item-${item.id}`}>
-                          <div>
-                            <p className="text-sm font-medium text-[#5F6B5A]">{itemName(item)}</p>
-                            <p className="text-xs text-[#8B9286]">{itemQty(item)}g</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-semibold text-[#2F5641]">{itemKcal(item)}</span>
-                            <button
-                              onClick={() => deleteMutation.mutate(item.id)}
-                              className="w-6 h-6 rounded-full flex items-center justify-center text-[#BE4E35] hover:bg-[#BE4E35]/10 transition-colors"
-                              data-testid={`button-delete-${item.id}`}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="px-4 py-6 text-center">
-                      <p className="text-xs text-[#8B9286] mb-3">Nenhum alimento registrado</p>
+            {MEAL_SLOTS.map((slot) => (
+              <div key={slot.id} className="bg-white rounded-2xl border border-[#E8EBE5] overflow-hidden shadow-sm" data-testid={`card-meal-${slot.id}`}>
+                <div className="p-4 flex items-center justify-between bg-[#F5F3EE]/50">
+                  <h3 className="font-semibold text-[#2F5641]">{slot.name}</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setLocation("/nutrition/scale")}
+                        className="w-6 h-6 rounded-full bg-[#648D4A] flex items-center justify-center text-white hover:bg-[#52743C] transition-colors"
+                        title="Usar Balança"
+                      >
+                        <Scale size={12} strokeWidth={2.5} />
+                      </button>
                       <button
                         onClick={() => setLocation(`/nutrition/add?slot=${slot.id}`)}
-                        className="text-xs font-semibold text-[#C7AE6A] uppercase tracking-wider hover:underline"
+                        className="w-6 h-6 rounded-full bg-[#C7AE6A] flex items-center justify-center text-white hover:bg-[#AD8C48] transition-colors"
+                        title="Adicionar Manualmente"
+                        data-testid={`button-add-${slot.id}`}
                       >
-                        Adicionar Alimentos
+                        <Plus size={14} strokeWidth={3} />
                       </button>
                     </div>
-                  )}
+                  </div>
                 </div>
-              );
-            })}
+                <div className="px-4 py-4 text-center">
+                  <button
+                    onClick={() => setLocation(`/nutrition/add?slot=${slot.id}`)}
+                    className="text-xs font-semibold text-[#C7AE6A] uppercase tracking-wider hover:underline"
+                  >
+                    Adicionar Alimentos
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </main>
       </div>

@@ -9,19 +9,6 @@ import { apiFetch } from "@/lib/api";
 
 const DEFAULT_GOALS = { kcal: 2200, proteina: 160, carboidrato: 200, gordura: 70 };
 
-const MEAL_EMOJIS: Record<string, string> = {
-  breakfast: "🥣",
-  lunch: "🥗",
-  snack: "🍎",
-  dinner: "🍽️",
-};
-
-const MEAL_NAMES: Record<string, string> = {
-  breakfast: "Café da Manhã",
-  lunch: "Almoço",
-  snack: "Lanche da Tarde",
-  dinner: "Jantar",
-};
 
 export default function HomeScreen() {
   const [, setLocation] = useLocation();
@@ -103,17 +90,14 @@ export default function HomeScreen() {
     enabled: !!userId,
   });
 
-  const totalCal = mealSummary?.total_calorias ?? mealSummary?.totalCalories ?? 0;
-  const totalProt = Math.round(mealSummary?.total_proteinas ?? mealSummary?.totalProtein ?? 0);
-  const totalCarbs = Math.round(mealSummary?.total_carboidratos ?? mealSummary?.totalCarbs ?? 0);
-  const totalFat = Math.round(mealSummary?.total_gorduras ?? mealSummary?.totalFat ?? 0);
-  const metaCal = mealSummary?.meta_calorias ?? DEFAULT_GOALS.kcal;
-  const calRemaining = Math.max(0, metaCal - totalCal);
-  const calProgress = Math.min(1, totalCal / metaCal);
-  const allMeals = mealSummary?.meals || mealSummary?.refeicoes || {};
-  const mealEntries = Object.entries(allMeals) as [string, any][];
-  const mealCount = mealEntries.filter(([, m]) => (m.items || m.itens || []).length > 0).length;
-  const recentMeals = mealEntries.filter(([, m]) => (m.items || m.itens || []).length > 0).slice(0, 3);
+  const totalCal = mealSummary?.consumido?.calorias ?? 0;
+  const totalProt = Math.round(mealSummary?.consumido?.proteinas ?? 0);
+  const totalCarbs = Math.round(mealSummary?.consumido?.carboidratos ?? 0);
+  const totalFat = Math.round(mealSummary?.consumido?.gorduras ?? 0);
+  const metaCal = mealSummary?.meta?.calorias ?? DEFAULT_GOALS.kcal;
+  const calRemaining = Math.max(0, mealSummary?.saldo?.calorias ?? (metaCal - totalCal));
+  const calProgress = Math.min(1, (mealSummary?.percentual_meta?.calorias ?? (metaCal > 0 ? (totalCal / metaCal) * 100 : 0)) / 100);
+  const mealCount = mealSummary?.total_registros ?? 0;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
@@ -257,29 +241,29 @@ export default function HomeScreen() {
             </button>
           </div>
           
-          <div className="space-y-3">
-            {recentMeals.length > 0 ? recentMeals.map(([slot, data]) => (
-              <div key={slot} className="bg-white p-3 rounded-xl border border-[#E8EBE5] shadow-sm flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-[#648D4A]/10 flex items-center justify-center text-lg">{MEAL_EMOJIS[slot] || "🍽️"}</div>
-                  <div>
-                    <p className="text-sm font-semibold text-[#2F5641]">{MEAL_NAMES[slot] || slot}</p>
-                    <p className="text-[10px] text-[#8B9286]">{Math.round(data.calories ?? data.calorias ?? 0)} kcal</p>
-                  </div>
+          {mealCount > 0 ? (
+            <div className="bg-white p-4 rounded-xl border border-[#E8EBE5] shadow-sm">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-xs text-[#8B9286]">Prot</p>
+                  <p className="text-sm font-semibold text-[#648D4A]">{totalProt}g</p>
                 </div>
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 rounded-full bg-[#648D4A]" title="Protein" />
-                  <span className="w-2 h-2 rounded-full bg-[#D97952]" title="Carbs" />
-                  <span className="w-2 h-2 rounded-full bg-[#C7AE6A]" title="Fats" />
+                <div>
+                  <p className="text-xs text-[#8B9286]">Carb</p>
+                  <p className="text-sm font-semibold text-[#D97952]">{totalCarbs}g</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#8B9286]">Gord</p>
+                  <p className="text-sm font-semibold text-[#C7AE6A]">{totalFat}g</p>
                 </div>
               </div>
-            )) : (
-              <div className="bg-white p-4 rounded-xl border border-[#E8EBE5] shadow-sm text-center">
-                <p className="text-xs text-[#8B9286]">Nenhuma refeição registrada hoje</p>
-                <button onClick={() => setLocation("/nutrition")} className="text-xs font-semibold text-[#C7AE6A] mt-2 hover:underline">Registrar agora</button>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="bg-white p-4 rounded-xl border border-[#E8EBE5] shadow-sm text-center">
+              <p className="text-xs text-[#8B9286]">Nenhuma refeição registrada hoje</p>
+              <button onClick={() => setLocation("/nutrition")} className="text-xs font-semibold text-[#C7AE6A] mt-2 hover:underline">Registrar agora</button>
+            </div>
+          )}
         </section>
 
         {/* Workout of the Day */}
