@@ -1,0 +1,305 @@
+# UX Writing — Perfil do Usuário Mobile
+
+Projeto: UNIO  
+Módulo: Perfil do Usuário Mobile  
+Versão: 1.0  
+Data: 16 de Fevereiro de 2026  
+Status: Pronto para handoff (UX/UI + Frontend)
+
+---
+
+## 1. Escopo deste copy
+
+Este material cobre:
+- Tela de perfil do usuário;
+- Labels, placeholders e textos auxiliares;
+- CTAs primários e secundários;
+- Mensagens de validação, erro e sucesso;
+- Estados de carregamento, vazio e falha.
+
+Não inclui neste ciclo:
+- Fluxo completo de upload de foto nativo;
+- Configurações avançadas de preferências;
+- Copy de metas sem contrato dedicado de backend (hidratação por clima, objetivos extras).
+
+---
+
+## 2. Voz e tom
+
+### Voz
+- Clara
+- Direta
+- Humana
+- Confiável
+
+### Tom por situação
+- Edição normal: objetivo e orientativo
+- Confirmação: positivo e breve
+- Erro: empático, sem culpabilizar
+- Sessão: informativo e acionável
+
+### Princípios aplicados
+1. Frases curtas e acionáveis.
+2. Um objetivo por mensagem.
+3. Erro sempre com próximo passo.
+4. CTAs com verbo no infinitivo.
+
+---
+
+## 3. Copy por bloco da tela
+
+## 3.1 Cabeçalho
+
+### Título
+- Meu perfil
+
+### Ação no avatar
+- Tooltip/label de acessibilidade: Alterar foto de perfil
+
+---
+
+## 3.2 Bloco: Conta
+
+### Título da seção
+- Conta
+
+### Campos
+- Nome
+  - Placeholder: Digite seu nome
+- Sobrenome
+  - Placeholder: Digite seu sobrenome
+- E-mail
+  - Placeholder: seuemail@exemplo.com
+  - Observação visual: somente leitura
+
+### CTA de seção (opcional, se existir ação local)
+- Salvar dados
+
+---
+
+## 3.3 Bloco: Dados pessoais
+
+### Título da seção
+- Dados pessoais
+
+### Campos
+- Altura (cm)
+  - Placeholder: Ex.: 178
+- Peso (kg)
+  - Placeholder: Ex.: 72,5
+  - Observação visual: somente leitura
+- Nascimento
+  - Placeholder: DD/MM/AAAA
+- Sexo
+  - Placeholder: Selecione
+  - Opções: Masculino | Feminino
+- Nível de atividade
+  - Placeholder: Selecione
+  - Opções:
+    - Sedentário
+    - Atividade leve
+    - Atividade moderada
+    - Muito ativo
+
+### Texto auxiliar opcional
+- Seus dados ajudam a personalizar recomendações e metas.
+
+### CTA de seção (opcional, se existir ação local)
+- Salvar perfil
+
+---
+
+## 3.4 Bloco: Meus objetivos
+
+### Título da seção
+- Meus objetivos
+
+### Itens
+- Meta de passos
+- Meta de calorias
+- Meta de sono
+
+### Formato de exibição recomendado
+- Meta de passos: 10.000
+- Meta de calorias: 2.200 kcal
+- Meta de sono: 8 h
+
+### CTA de seção
+- Gerenciar objetivos
+
+### Estado vazio
+- Texto: Você ainda não definiu objetivos.
+- CTA: Definir objetivos
+
+---
+
+## 3.5 Bloco: Dispositivos
+
+### Título da seção
+- Dispositivos
+
+### Item de dispositivo
+- Nome do dispositivo (ex.: Xiaomi Body Composition Scale 2)
+- Identificação secundária (ex.: MAC resumido)
+- Status:
+  - Conectado
+  - Desconectado
+
+### Ações
+- CTA principal da seção: Gerenciar
+- CTA por item (destrutiva): Excluir
+
+### Estado vazio
+- Título: Nenhum dispositivo vinculado
+- Texto: Vincule um dispositivo para registrar medições automáticas.
+- CTA: Adicionar dispositivo
+
+---
+
+## 3.6 Bloco: Profissionais vinculados
+
+### Título da seção
+- Profissionais vinculados
+
+### Item de profissional
+- Nome
+- Especialidade
+
+### Estado vazio
+- Título: Nenhum profissional vinculado
+- Texto: Você ainda não possui profissionais vinculados.
+
+---
+
+## 3.7 Ações de sessão
+
+### CTA destrutiva
+- Sair da conta
+
+### Confirmação de saída (modal)
+- Título: Sair da conta?
+- Descrição: Você precisará entrar novamente para acessar seus dados.
+- Botão primário: Confirmar
+- Botão secundário: Cancelar
+
+---
+
+## 3.8 Rodapé fixo
+
+### CTA principal da tela
+- Salvar alterações
+
+### Estado carregando do CTA
+- Salvando alterações...
+
+### Estado desabilitado
+- Sem alterações para salvar
+
+---
+
+## 4. Validações de formulário e mensagens
+
+## 4.1 Nome
+- Campo vazio: Informe seu nome.
+
+## 4.2 Sobrenome
+- Sem validação obrigatória no MVP.
+
+## 4.3 Altura
+- Campo vazio: Informe sua altura.
+- Valor inválido: Informe uma altura válida em centímetros.
+
+## 4.4 Nascimento
+- Campo vazio: Informe sua data de nascimento.
+- Formato inválido: Use o formato DD/MM/AAAA.
+- Data futura: Informe uma data de nascimento válida.
+
+## 4.5 Sexo
+- Não selecionado: Selecione seu sexo.
+
+## 4.6 Nível de atividade
+- Não selecionado: Selecione seu nível de atividade.
+
+## 4.7 MAC da balança (quando campo existir no fluxo)
+- Formato inválido: Use o formato AA:BB:CC:DD:EE:FF.
+
+---
+
+## 5. Mensagens globais (toast/banner)
+
+### Sucesso
+- Perfil atualizado com sucesso.
+- Dispositivo removido com sucesso.
+
+### Erro de rede
+- Sem conexão. Verifique sua internet e tente de novo.
+
+### Erro de servidor
+- Não foi possível salvar agora. Tente de novo em instantes.
+
+### Erro de regra de negócio
+- Não foi possível remover este dispositivo agora.
+- Não encontramos seus dados de perfil. Atualize a página e tente de novo.
+
+---
+
+## 6. Estados de interface
+
+## 6.1 Carregando
+- Texto de apoio opcional: Carregando seu perfil...
+
+## 6.2 Vazio
+- Usar estados vazios por seção (dispositivos, objetivos, profissionais).
+
+## 6.3 Erro
+- Mensagem padrão: Não foi possível carregar seu perfil. Tente de novo.
+- CTA: Tentar de novo
+
+## 6.4 Sucesso
+- Priorizar toast curto, sem modal bloqueante.
+
+---
+
+## 7. Acessibilidade (copy)
+
+### Labels para leitor de tela
+- Campo nome
+- Campo sobrenome
+- Campo e-mail
+- Campo altura em centímetros
+- Campo data de nascimento
+- Campo sexo
+- Campo nível de atividade
+- Botão salvar alterações
+- Botão sair da conta
+
+### Boas práticas
+- Não depender apenas de cor para estado de erro.
+- Associar mensagens de erro ao campo correto.
+- Manter texto de botão claro e descritivo.
+
+---
+
+## 8. Eventos de analytics recomendados
+
+- perfil_tela_visualizada
+- perfil_alteracao_realizada
+- perfil_salvo_sucesso
+- perfil_salvo_falha
+- perfil_logout_solicitado
+- perfil_logout_confirmado
+- perfil_dispositivo_removido
+
+---
+
+## 9. Checklist de QA de conteúdo
+
+- CTAs estão no infinitivo e com no máximo 3 palavras quando possível.
+- Labels são curtas e sem pontuação final desnecessária.
+- Erros seguem fórmula: o que aconteceu + o que fazer agora.
+- Não há termos técnicos desnecessários para usuário final.
+- Todos os estados possuem copy definida (carregando, vazio, sucesso, erro).
+
+---
+
+Documento pronto para implementação de strings no app mobile e para refinamento visual no design system.
