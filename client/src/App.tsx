@@ -24,11 +24,12 @@ import PantryScreen from "@/pages/pantry";
 import HydrationScreen from "@/pages/hydration";
 import ProfileScreen from "@/pages/profile";
 import { useState } from "react";
+import { Redirect } from "wouter";
 
 function Router() {
   return (
     <Switch>
-      <Route path="/">{() => <SplashScreen />}</Route>
+      <Route path="/">{() => <Redirect to="/home" />}</Route>
       <Route path="/auth" component={AuthScreen} />
       <Route path="/onboarding" component={OnboardingScreen} />
       <Route path="/welcome" component={WelcomeScreen} />
