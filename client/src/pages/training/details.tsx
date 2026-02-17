@@ -26,7 +26,7 @@ const EXERCISES = [
     sets: 3,
     reps: "10-12",
     rest: "60s",
-    image: "https://images.unsplash.com/photo-1532029837206-abbe2b7a4bdd?q=80&w=2670&auto=format&fit=crop"
+    image: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?q=80&w=2670&auto=format&fit=crop"
   },
   {
     id: 4,
