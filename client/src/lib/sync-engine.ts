@@ -9,7 +9,9 @@ export interface SyncOperation {
 }
 
 interface SyncPullResponse {
-  changes: Record<string, { created: any[]; updated: any[]; deleted: string[] }>;
+  eventos: Record<string, { created: any[]; updated: any[]; deleted: string[] }>;
+  cursor_proximo: string | null;
+  tem_mais: boolean;
   timestamp: number;
 }
 
@@ -20,7 +22,7 @@ interface SyncPushResponse {
 
 interface SyncState {
   pendingChanges: SyncOperation[];
-  lastPulledAt: number | null;
+  lastCursor: string | null;
   isSyncing: boolean;
   lastError: string | null;
 
@@ -32,7 +34,7 @@ interface SyncState {
 
 export const useSyncEngine = create<SyncState>((set, get) => ({
   pendingChanges: [],
-  lastPulledAt: null,
+  lastCursor: null,
   isSyncing: false,
   lastError: null,
 
@@ -86,7 +88,6 @@ export const useSyncEngine = create<SyncState>((set, get) => ({
       set({
         isSyncing: false,
         pendingChanges: [],
-        lastPulledAt: Date.now(),
       });
 
       return result;
@@ -98,14 +99,14 @@ export const useSyncEngine = create<SyncState>((set, get) => ({
   },
 
   pull: async (tables) => {
-    const { isSyncing, lastPulledAt } = get();
+    const { isSyncing, lastCursor } = get();
     if (isSyncing) return null;
 
     set({ isSyncing: true, lastError: null });
 
     try {
       const params = new URLSearchParams();
-      if (lastPulledAt) params.set('last_pulled_at', String(lastPulledAt));
+      if (lastCursor) params.set('cursor', lastCursor);
       if (tables) params.set('tables', tables.join(','));
 
       const response = await fetch(`/api/sync/pull?${params.toString()}`);
@@ -119,7 +120,7 @@ export const useSyncEngine = create<SyncState>((set, get) => ({
 
       set({
         isSyncing: false,
-        lastPulledAt: result.timestamp,
+        lastCursor: result.cursor_proximo,
       });
 
       return result;

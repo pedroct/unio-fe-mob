@@ -1,7 +1,6 @@
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { foods, users } from "@shared/schema";
-import { eq } from "drizzle-orm";
 
 const SEED_FOODS = [
   { name: "Peito de Frango Grelhado", servingSizeG: 100, caloriesKcal: 165, proteinG: 31, carbsG: 0, fatG: 3.6, fiberG: 0, sodiumMg: 74 },
@@ -29,7 +28,7 @@ async function seed() {
 
   const existingFoods = await db.select().from(foods);
   if (existingFoods.length > 0) {
-    console.log(`Foods table already has ${existingFoods.length} entries. Skipping seed.`);
+    console.log(`Foods table already has ${existingFoods.length} entries. Skipping.`);
   } else {
     await db.insert(foods).values(SEED_FOODS);
     console.log(`Inserted ${SEED_FOODS.length} food items.`);

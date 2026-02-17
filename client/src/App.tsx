@@ -28,7 +28,7 @@ import { useState } from "react";
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={SplashScreen} />
+      <Route path="/">{() => <SplashScreen />}</Route>
       <Route path="/auth" component={AuthScreen} />
       <Route path="/onboarding" component={OnboardingScreen} />
       <Route path="/welcome" component={WelcomeScreen} />
