@@ -1,0 +1,2 @@
+.sem-scrollbar::-webkit-scrollbar { display: none; }
+.sem-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
