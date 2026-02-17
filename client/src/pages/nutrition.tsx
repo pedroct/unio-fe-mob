@@ -13,10 +13,36 @@ const MEAL_SLOTS = [
   { id: "dinner", name: "Jantar" },
 ];
 
-const CALORIE_GOAL = 2200;
-const PROTEIN_GOAL = 160;
-const CARBS_GOAL = 200;
-const FAT_GOAL = 70;
+const DEFAULT_GOALS = { kcal: 2200, proteina: 160, carboidrato: 200, gordura: 70 };
+
+interface ResumoHoje {
+  total_calorias?: number;
+  total_proteinas?: number;
+  total_carboidratos?: number;
+  total_gorduras?: number;
+  meta_calorias?: number;
+  meta_proteinas?: number;
+  meta_carboidratos?: number;
+  meta_gorduras?: number;
+  totalCalories?: number;
+  totalProtein?: number;
+  totalCarbs?: number;
+  totalFat?: number;
+  meals?: Record<string, { items: any[]; calories: number; protein: number; carbs: number; fat: number }>;
+  refeicoes?: Record<string, { itens: any[]; calorias: number; proteinas: number; carboidratos: number; gorduras: number }>;
+}
+
+function extractSummary(s: ResumoHoje | undefined) {
+  const cal = s?.total_calorias ?? s?.totalCalories ?? 0;
+  const prot = s?.total_proteinas ?? s?.totalProtein ?? 0;
+  const carbs = s?.total_carboidratos ?? s?.totalCarbs ?? 0;
+  const fat = s?.total_gorduras ?? s?.totalFat ?? 0;
+  const metaCal = s?.meta_calorias ?? DEFAULT_GOALS.kcal;
+  const metaProt = s?.meta_proteinas ?? DEFAULT_GOALS.proteina;
+  const metaCarbs = s?.meta_carboidratos ?? DEFAULT_GOALS.carboidrato;
+  const metaFat = s?.meta_gorduras ?? DEFAULT_GOALS.gordura;
+  return { cal, prot, carbs, fat, metaCal, metaProt, metaCarbs, metaFat };
+}
 
 export default function NutritionScreen() {
   const [, setLocation] = useLocation();
@@ -24,25 +50,7 @@ export default function NutritionScreen() {
   const queryClient = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data: summary, isLoading } = useQuery<{
-    totalCalories: number;
-    totalProtein: number;
-    totalCarbs: number;
-    totalFat: number;
-    meals: Record<string, {
-      items: Array<{
-        id: string;
-        foodId: string;
-        mealSlot: string;
-        quantityG: number;
-        food: { name: string; servingSizeG: number; caloriesKcal: number; proteinG: number; carbsG: number; fatG: number };
-      }>;
-      calories: number;
-      protein: number;
-      carbs: number;
-      fat: number;
-    }>;
-  }>({
+  const { data: summary, isLoading } = useQuery<ResumoHoje>({
     queryKey: ["nutricao", "resumo-hoje"],
     queryFn: async () => {
       const res = await apiFetch("/api/nutricao/resumo-hoje");
@@ -62,14 +70,38 @@ export default function NutritionScreen() {
     },
   });
 
-  const available = CALORIE_GOAL - (summary?.totalCalories || 0);
-  const proteinPct = Math.min(100, ((summary?.totalProtein || 0) / PROTEIN_GOAL) * 100);
-  const carbsPct = Math.min(100, ((summary?.totalCarbs || 0) / CARBS_GOAL) * 100);
-  const fatPct = Math.min(100, ((summary?.totalFat || 0) / FAT_GOAL) * 100);
+  const { cal: totalCal, prot: totalProt, carbs: totalCarbs, fat: totalFat, metaCal, metaProt, metaCarbs, metaFat } = extractSummary(summary);
+  const available = metaCal - totalCal;
+  const proteinPct = Math.min(100, (totalProt / metaProt) * 100);
+  const carbsPct = Math.min(100, (totalCarbs / metaCarbs) * 100);
+  const fatPct = Math.min(100, (totalFat / metaFat) * 100);
+
+  const meals = summary?.meals || summary?.refeicoes || {};
+
+  function getMealData(slotId: string) {
+    const m = (meals as any)?.[slotId];
+    if (!m) return { items: [], calories: 0 };
+    return {
+      items: m.items || m.itens || [],
+      calories: m.calories ?? m.calorias ?? 0,
+    };
+  }
+
+  function itemName(item: any) {
+    return item?.food?.name || item?.alimento?.descricao || item?.descricao || "Alimento";
+  }
+
+  function itemQty(item: any) {
+    return item?.quantityG ?? item?.quantidade_g ?? item?.quantidade ?? 0;
+  }
 
   function itemKcal(item: any) {
-    const ratio = item.quantityG / (item.food.servingSizeG || 100);
-    return Math.round(item.food.caloriesKcal * ratio);
+    if (item?.calorias != null) return Math.round(item.calorias);
+    const food = item?.food || item?.alimento;
+    if (!food) return 0;
+    const serving = food.servingSizeG || food.porcao_g || 100;
+    const ratio = itemQty(item) / serving;
+    return Math.round((food.caloriesKcal || food.calorias || 0) * ratio);
   }
 
   return (
@@ -101,7 +133,7 @@ export default function NutritionScreen() {
               <div className="text-right">
                 <p className="text-xs font-medium opacity-80 uppercase tracking-wider mb-1">Consumido</p>
                 <p className="font-semibold text-lg" data-testid="text-calories-consumed">
-                  {isLoading ? "..." : `${summary?.totalCalories || 0} / ${CALORIE_GOAL}`}
+                  {isLoading ? "..." : `${totalCal} / ${metaCal}`}
                 </p>
               </div>
             </div>
@@ -110,7 +142,7 @@ export default function NutritionScreen() {
               <div>
                 <div className="flex justify-between text-xs font-medium mb-1.5">
                   <span className="text-[#EFECB6]">Proteína</span>
-                  <span>{Math.round(summary?.totalProtein || 0)}g / {PROTEIN_GOAL}g</span>
+                  <span>{Math.round(totalProt)}g / {metaProt}g</span>
                 </div>
                 <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                   <div className="h-full bg-[#EFECB6] rounded-full transition-all" style={{ width: `${proteinPct}%` }} />
@@ -119,7 +151,7 @@ export default function NutritionScreen() {
               <div>
                 <div className="flex justify-between text-xs font-medium mb-1.5">
                   <span className="text-[#D97952]">Carboidratos</span>
-                  <span>{Math.round(summary?.totalCarbs || 0)}g / {CARBS_GOAL}g</span>
+                  <span>{Math.round(totalCarbs)}g / {metaCarbs}g</span>
                 </div>
                 <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                   <div className="h-full bg-[#D97952] rounded-full transition-all" style={{ width: `${carbsPct}%` }} />
@@ -128,7 +160,7 @@ export default function NutritionScreen() {
               <div>
                 <div className="flex justify-between text-xs font-medium mb-1.5">
                   <span className="text-[#C7AE6A]">Gorduras</span>
-                  <span>{Math.round(summary?.totalFat || 0)}g / {FAT_GOAL}g</span>
+                  <span>{Math.round(totalFat)}g / {metaFat}g</span>
                 </div>
                 <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                   <div className="h-full bg-[#C7AE6A] rounded-full transition-all" style={{ width: `${fatPct}%` }} />
@@ -168,9 +200,9 @@ export default function NutritionScreen() {
 
           <div className="space-y-4">
             {MEAL_SLOTS.map((slot) => {
-              const mealData = summary?.meals?.[slot.id];
-              const items = mealData?.items || [];
-              const mealCalories = mealData?.calories || 0;
+              const mealData = getMealData(slot.id);
+              const items = mealData.items;
+              const mealCalories = mealData.calories;
 
               return (
                 <div key={slot.id} className="bg-white rounded-2xl border border-[#E8EBE5] overflow-hidden shadow-sm" data-testid={`card-meal-${slot.id}`}>
@@ -203,8 +235,8 @@ export default function NutritionScreen() {
                       {items.map((item: any) => (
                         <div key={item.id} className="flex justify-between items-center py-3 border-b border-[#E8EBE5] last:border-0" data-testid={`row-meal-item-${item.id}`}>
                           <div>
-                            <p className="text-sm font-medium text-[#5F6B5A]">{item.food.name}</p>
-                            <p className="text-xs text-[#8B9286]">{item.quantityG}g</p>
+                            <p className="text-sm font-medium text-[#5F6B5A]">{itemName(item)}</p>
+                            <p className="text-xs text-[#8B9286]">{itemQty(item)}g</p>
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-sm font-semibold text-[#2F5641]">{itemKcal(item)}</span>

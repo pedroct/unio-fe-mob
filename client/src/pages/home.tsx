@@ -7,10 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 
-const CALORIE_GOAL = 2200;
-const PROTEIN_GOAL = 160;
-const CARBS_GOAL = 200;
-const FAT_GOAL = 70;
+const DEFAULT_GOALS = { kcal: 2200, proteina: 160, carboidrato: 200, gordura: 70 };
 
 const MEAL_EMOJIS: Record<string, string> = {
   breakfast: "🥣",
@@ -96,13 +93,7 @@ export default function HomeScreen() {
     weight: p.peso_kg,
   }));
 
-  const { data: mealSummary } = useQuery<{
-    totalCalories: number;
-    totalProtein: number;
-    totalCarbs: number;
-    totalFat: number;
-    meals: Record<string, { items: any[]; calories: number; protein: number; carbs: number; fat: number }>;
-  }>({
+  const { data: mealSummary } = useQuery<any>({
     queryKey: ["nutricao", "resumo-hoje"],
     queryFn: async () => {
       const res = await apiFetch("/api/nutricao/resumo-hoje");
@@ -112,16 +103,17 @@ export default function HomeScreen() {
     enabled: !!userId,
   });
 
-  const totalCal = mealSummary?.totalCalories ?? 0;
-  const totalProt = Math.round(mealSummary?.totalProtein ?? 0);
-  const totalCarbs = Math.round(mealSummary?.totalCarbs ?? 0);
-  const totalFat = Math.round(mealSummary?.totalFat ?? 0);
-  const calRemaining = Math.max(0, CALORIE_GOAL - totalCal);
-  const calProgress = Math.min(1, totalCal / CALORIE_GOAL);
-  const mealCount = mealSummary?.meals ? Object.values(mealSummary.meals).filter(m => m.items.length > 0).length : 0;
-  const recentMeals = mealSummary?.meals
-    ? Object.entries(mealSummary.meals).filter(([, m]) => m.items.length > 0).slice(0, 3)
-    : [];
+  const totalCal = mealSummary?.total_calorias ?? mealSummary?.totalCalories ?? 0;
+  const totalProt = Math.round(mealSummary?.total_proteinas ?? mealSummary?.totalProtein ?? 0);
+  const totalCarbs = Math.round(mealSummary?.total_carboidratos ?? mealSummary?.totalCarbs ?? 0);
+  const totalFat = Math.round(mealSummary?.total_gorduras ?? mealSummary?.totalFat ?? 0);
+  const metaCal = mealSummary?.meta_calorias ?? DEFAULT_GOALS.kcal;
+  const calRemaining = Math.max(0, metaCal - totalCal);
+  const calProgress = Math.min(1, totalCal / metaCal);
+  const allMeals = mealSummary?.meals || mealSummary?.refeicoes || {};
+  const mealEntries = Object.entries(allMeals) as [string, any][];
+  const mealCount = mealEntries.filter(([, m]) => (m.items || m.itens || []).length > 0).length;
+  const recentMeals = mealEntries.filter(([, m]) => (m.items || m.itens || []).length > 0).slice(0, 3);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
@@ -272,7 +264,7 @@ export default function HomeScreen() {
                   <div className="w-10 h-10 rounded-lg bg-[#648D4A]/10 flex items-center justify-center text-lg">{MEAL_EMOJIS[slot] || "🍽️"}</div>
                   <div>
                     <p className="text-sm font-semibold text-[#2F5641]">{MEAL_NAMES[slot] || slot}</p>
-                    <p className="text-[10px] text-[#8B9286]">{Math.round(data.calories)} kcal</p>
+                    <p className="text-[10px] text-[#8B9286]">{Math.round(data.calories ?? data.calorias ?? 0)} kcal</p>
                   </div>
                 </div>
                 <div className="flex gap-1">

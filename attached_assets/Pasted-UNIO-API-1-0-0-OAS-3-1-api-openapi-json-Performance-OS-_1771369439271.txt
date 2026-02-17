@@ -1,0 +1,720 @@
+UNIO API
+ 1.0.0 
+OAS 3.1
+/api/openapi.json
+Performance OS - API de Saúde Unificada
+
+
+Authorize
+Autenticação
+
+
+POST
+/api/auth/pair
+Obtain Token
+
+
+POST
+/api/auth/refresh
+Refresh Token
+
+
+POST
+/api/auth/verify
+Verify Token
+
+
+POST
+/api/auth/blacklist
+Blacklist Token
+
+Núcleo
+
+
+POST
+/api/nucleo/registrar
+Registrar novo usuário
+
+
+GET
+/api/nucleo/eu
+Dados do usuário autenticado
+
+
+
+PATCH
+/api/nucleo/eu
+Atualizar dados do usuário
+
+
+
+GET
+/api/nucleo/perfil
+Obter perfil do usuário
+
+
+
+PATCH
+/api/nucleo/perfil
+Atualizar perfil
+
+
+
+POST
+/api/nucleo/vincular-profissional
+Vincular a um profissional
+
+
+
+DELETE
+/api/nucleo/desvincular-profissional/{profissional_id}
+Desvincular de um profissional
+
+
+
+GET
+/api/nucleo/meus-profissionais
+Listar meus profissionais
+
+
+
+GET
+/api/nucleo/meus-pacientes
+Listar meus pacientes
+
+
+Biometria
+
+
+POST
+/api/biometria/registrar
+Registrar leitura biométrica
+
+
+
+POST
+/api/biometria/registrar/lote
+Registrar leituras em lote
+
+
+
+POST
+/api/biometria/registrar/xiaomi
+Registrar leitura via scanner Xiaomi
+
+
+POST
+/api/biometria/registrar/rf-bmf01
+Capturar medida corporal via RF-BMF01
+
+
+
+GET
+/api/biometria/sync-log
+Sincronização incremental de eventos
+
+
+
+GET
+/api/biometria/estado-atual
+Obter estado biométrico atual
+
+
+
+GET
+/api/biometria/historico
+Obter histórico de leituras
+
+
+
+GET
+/api/biometria/tendencia
+Calcular tendência de peso
+
+
+
+GET
+/api/biometria/leituras
+Listar leituras recentes
+
+
+
+GET
+/api/biometria/leituras/{leitura_id}
+Obter detalhes de leitura
+
+
+
+DELETE
+/api/biometria/leituras/{leitura_id}
+Excluir leitura
+
+
+
+GET
+/api/biometria/dispositivos
+Listar dispositivos
+
+
+
+POST
+/api/biometria/dispositivos
+Vincular dispositivo
+
+
+
+POST
+/api/biometria/dispositivos/{dispositivo_id}/preparar-pesagem
+Preparar dispositivo para pesagem
+
+
+
+DELETE
+/api/biometria/dispositivos/{dispositivo_id}
+Desvincular dispositivo
+
+
+
+GET
+/api/biometria/meta
+Obter meta ativa
+
+
+
+POST
+/api/biometria/meta
+Criar meta biométrica
+
+
+
+PATCH
+/api/biometria/meta/{meta_id}
+Atualizar meta
+
+
+Integrações
+
+
+GET
+/api/integracoes/provedores
+Listar provedores disponíveis
+
+
+POST
+/api/integracoes/{provedor}/conectar
+Iniciar conexão OAuth
+
+
+
+GET
+/api/integracoes/{provedor}/callback
+Callback OAuth
+
+
+POST
+/api/integracoes/{provedor}/sincronizar
+Forçar sincronização
+
+
+
+DELETE
+/api/integracoes/{provedor}/desconectar
+Desconectar provedor
+
+
+Nutrição
+
+
+GET
+/api/nutricao/alimentos/buscar
+Buscar alimentos
+
+
+
+GET
+/api/nutricao/alimentos/codigo-barras/{codigo}
+Buscar por código de barras
+
+
+
+POST
+/api/nutricao/alimentos
+Criar alimento
+
+
+
+GET
+/api/nutricao/refeicoes
+Listar refeições
+
+
+
+POST
+/api/nutricao/refeicoes
+Criar refeição
+
+
+
+POST
+/api/nutricao/refeicoes/criar-padrao
+Criar refeições padrão
+
+
+
+GET
+/api/nutricao/suplementacao/protocolos
+Listar protocolos de suplementação
+
+
+
+POST
+/api/nutricao/suplementacao/protocolos
+Criar protocolo de suplementação
+
+
+
+PATCH
+/api/nutricao/suplementacao/protocolos/{protocolo_id}
+Atualizar protocolo de suplementação
+
+
+
+POST
+/api/nutricao/suplementacao/protocolos/{protocolo_id}/ativar
+Ativar protocolo de suplementação
+
+
+
+GET
+/api/nutricao/suplementacao/agenda-hoje
+Agenda de suplementação do dia
+
+
+
+POST
+/api/nutricao/suplementacao/agenda/{item_horario_id}/registrar
+Registrar ingestão de suplemento
+
+
+
+GET
+/api/nutricao/suplementacao/historico
+Histórico de suplementação
+
+
+
+GET
+/api/nutricao/suplementacao/resumo
+Resumo de aderência de suplementação
+
+
+
+POST
+/api/nutricao/diario/registrar
+Registrar alimento
+
+
+
+GET
+/api/nutricao/diario/registros
+Listar registros do dia
+
+
+
+DELETE
+/api/nutricao/diario/registros/{registro_id}
+Deletar registro
+
+
+
+POST
+/api/nutricao/diario/balanca-cozinha
+Registrar via Balança de Cozinha
+
+
+
+GET
+/api/nutricao/ble/metricas
+Métricas BLE
+
+
+
+GET
+/api/nutricao/diario/pesagens-pendentes
+Listar pesagens pendentes
+
+
+
+POST
+/api/nutricao/diario/pesagens-pendentes/{pesagem_id}/associar
+Associar pesagem a alimento
+
+
+
+DELETE
+/api/nutricao/diario/pesagens-pendentes/{pesagem_id}
+Descartar pesagem
+
+
+
+GET
+/api/nutricao/resumo-hoje
+Resumo do dia
+
+
+Retorna resumo nutricional do dia (consumido vs meta).
+
+Parameters
+Try it out
+Name	Description
+data
+string | (string | null)($date)
+(query)
+data
+Responses
+Code	Description	Links
+200	
+OK
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "data": "string",
+  "consumido": {
+    "calorias": 0,
+    "carboidratos": 0,
+    "proteinas": 0,
+    "gorduras": 0,
+    "fibras": 0
+  },
+  "meta": {
+    "calorias": 0,
+    "carboidratos": 0,
+    "proteinas": 0,
+    "gorduras": 0
+  },
+  "saldo": {
+    "calorias": 0,
+    "carboidratos": 0,
+    "proteinas": 0,
+    "gorduras": 0
+  },
+  "percentual_meta": {
+    "calorias": 0,
+    "carboidratos": 0,
+    "proteinas": 0,
+    "gorduras": 0
+  },
+  "total_registros": 0,
+  "calculo": {
+    "tmb": 0,
+    "get": 0,
+    "deficit_aplicado": 0
+  }
+}
+No links
+
+GET
+/api/nutricao/meta-calorica
+Meta calórica
+
+
+
+POST
+/api/nutricao/meta-calorica/recalcular
+Recalcular meta
+
+
+
+GET
+/api/nutricao/tbca/alimentos
+Listar alimentos TBCA
+
+
+
+GET
+/api/nutricao/tbca/alimentos/{alimento_id}
+Obter alimento TBCA
+
+
+
+GET
+/api/nutricao/tbca/alimentos/codigo/{codigo_tbca}
+Buscar por código TBCA
+
+
+
+POST
+/api/nutricao/tbca/calcular
+Calcular composição nutricional
+
+
+
+GET
+/api/nutricao/tbca/grupos
+Listar grupos alimentares
+
+
+
+GET
+/api/nutricao/tbca/tipos
+Listar tipos de alimento
+
+
+
+GET
+/api/nutricao/tbca/nutrientes
+Listar nutrientes
+
+
+Hidratação
+
+
+GET
+/api/hidratacao/meta
+Buscar meta diária de hidratação
+
+
+
+PATCH
+/api/hidratacao/meta
+Atualizar meta diária de hidratação
+
+
+
+POST
+/api/hidratacao/registros
+Criar registro de hidratação
+
+
+
+GET
+/api/hidratacao/registros
+Listar registros de hidratação
+
+
+
+DELETE
+/api/hidratacao/registros/{registro_id}
+Excluir registro de hidratação
+
+
+
+GET
+/api/hidratacao/resumo
+Buscar resumo de hidratação do dia
+
+
+Treino
+
+
+GET
+/api/treino/exercicios
+Listar exercícios
+
+
+
+POST
+/api/treino/exercicios
+Criar exercício personalizado
+
+
+
+POST
+/api/treino/planos
+Criar plano de treino
+
+
+
+GET
+/api/treino/planos
+Listar planos de treino
+
+
+
+GET
+/api/treino/planos/{plano_id}
+Detalhar plano de treino
+
+
+
+PATCH
+/api/treino/planos/{plano_id}
+Atualizar plano de treino
+
+
+
+DELETE
+/api/treino/planos/{plano_id}
+Excluir plano de treino
+
+
+
+POST
+/api/treino/planos/{plano_id}/itens
+Adicionar item ao plano
+
+
+
+PATCH
+/api/treino/itens/{item_id}
+Atualizar item do plano
+
+
+
+DELETE
+/api/treino/itens/{item_id}
+Remover item do plano
+
+
+
+POST
+/api/treino/sessoes
+Criar sessão de treino
+
+
+
+GET
+/api/treino/sessoes
+Listar sessões de treino
+
+
+
+GET
+/api/treino/sessoes/{sessao_id}
+Detalhar sessão de treino
+
+
+
+PATCH
+/api/treino/sessoes/{sessao_id}
+Atualizar sessão de treino
+
+
+
+DELETE
+/api/treino/sessoes/{sessao_id}
+Remover sessão de treino
+
+
+
+Schemas
+TokenObtainPairOutputSchemaExpand allobject
+TokenObtainPairInputSchemaExpand allobject
+TokenRefreshOutputSchemaExpand allobject
+TokenRefreshInputSchemaExpand allobject
+SchemaExpand allobject
+TokenVerifyInputSchemaExpand allobject
+TokenBlacklistInputSchemaExpand allobject
+UsuarioSchemaExpand allobject
+MensagemSchemaExpand allobject
+UsuarioCriarSchemaExpand allobject
+UsuarioAtualizarSchemaExpand allobject
+PerfilSchemaExpand allobject
+PerfilAtualizarSchemaExpand allobject
+RelacaoSchemaExpand allobject
+RelacaoVincularSchemaExpand allobject
+LeituraBiometricaSchemaExpand allobject
+ErroSchemaExpand allobject
+LeituraCriarSchemaExpand allobject
+LeituraLoteSchemaExpand allobject
+XiaomiRespostaSchemaExpand allobject
+XiaomiLeituraSchemaExpand allobject
+MedidaCorporalSchemaExpand allobject
+CapturaRfBmf01SchemaExpand allobject
+RegistroSincronizacaoSchemaExpand allobject
+SincronizacaoIncrementalSchemaExpand allobject
+EstadoAtualSchemaExpand allobject
+HistoricoSchemaExpand allobject
+PontoHistoricoSchemaExpand allobject
+TendenciaSchemaExpand allobject
+LeituraResumoSchemaExpand allobject
+SucessoSchemaExpand allobject
+DispositivoSchemaExpand allobject
+DispositivoCriarSchemaExpand allobject
+MetaBiometricaSchemaExpand allobject
+MetaCriarSchemaExpand allobject
+MetaAtualizarSchemaExpand allobject
+ProvedorSchemaExpand allobject
+AlimentoSchemaExpand allobject
+AlimentoCriarSchemaExpand allobject
+RefeicaoSchemaExpand allobject
+RefeicaoCriarSchemaExpand allobject
+HorarioIngestaoSuplementacaoSchemaExpand allobject
+ItemProtocoloSuplementacaoSchemaExpand allobject
+ProtocoloSuplementacaoSchemaExpand allobject
+SuplementoCatalogoSchemaExpand allobject
+HorarioIngestaoSuplementacaoCriarSchemaExpand allobject
+ItemProtocoloSuplementacaoCriarSchemaExpand allobject
+ProtocoloSuplementacaoCriarSchemaExpand allobject
+ProtocoloSuplementacaoAtualizarSchemaExpand allobject
+AgendaHojeSuplementacaoSchemaExpand allobject
+AgendaItemSuplementacaoSchemaExpand allobject
+RegistroIngestaoSuplementacaoSchemaExpand allobject
+RegistrarIngestaoSuplementacaoSchemaExpand allobject
+HistoricoSuplementacaoSchemaExpand allobject
+ResumoSuplementacaoSchemaExpand allobject
+RegistrarAlimentoRespostaSchemaExpand allobject
+RegistrarAlimentoSchemaExpand allobject
+RegistroAlimentarSchemaExpand allobject
+BalancaCozinhaRespostaSchemaExpand allobject
+BalancaCozinhaSchemaExpand allobject
+PesagemPendenteListaSchemaExpand allobject
+PesagemPendenteSchemaExpand allobject
+AssociarPesagemRespostaSchemaExpand allobject
+AssociarPesagemSchemaExpand allobject
+DescartarPesagemRespostaSchemaExpand allobject
+CalculoMetaSchemaExpand allobject
+MacrosSchemaExpand allobject
+MacrosSemFibraSchemaExpand allobject
+PercentualMetaSchemaExpand allobject
+ResumoHojeSchemaExpand allobject
+SaldoMacrosSchemaExpand allobject
+MetaCaloricaSchemaExpand allobject
+RecalcularMetaRespostaSchemaExpand allobject
+AlimentoTBCAResumoSchemaExpand allobject
+GrupoAlimentarSchemaExpand allobject
+AlimentoTBCADetalheSchemaExpand allobject
+NutrienteSchemaExpand allobject
+TipoAlimentoSchemaExpand allobject
+ValorNutricionalSchemaExpand allobject
+CalculoNutricionalResponseSchemaExpand allobject
+ComposicaoCalculadaSchemaExpand allobject
+ResumoMacrosTBCASchemaExpand allobject
+CalculoNutricionalRequestSchemaExpand allobject
+MetaHidratacaoSchemaExpand allobject
+MetaHidratacaoAtualizadaSchemaExpand allobject
+ErroCampoSchemaExpand allobject
+ErroHidratacaoSchemaExpand allobject
+MetaHidratacaoAtualizarSchemaExpand allobject
+RegistroHidratacaoCriadoSchemaExpand allobject
+ResumoHidratacaoSchemaExpand allobject
+RegistroHidratacaoCriarSchemaExpand allobject
+RegistroHidratacaoItemSchemaExpand allobject
+RegistrosHidratacaoListaSchemaExpand allobject
+RegistroHidratacaoRemovidoSchemaExpand allobject
+ExercicioSchemaExpand allobject
+ExerciciosListaSchemaExpand allobject
+ExercicioCriadoSchemaExpand allobject
+ErroTreinoSchemaExpand allobject
+ExercicioCriarSchemaExpand allobject
+ItemPlanoTreinoSchemaExpand allobject
+PlanoTreinoCriadoSchemaExpand allobject
+PlanoTreinoCriarSchemaExpand allobject
+PlanoTreinoSchemaExpand allobject
+PlanosTreinoListaSchemaExpand allobject
+PlanoTreinoDetalheSchemaExpand allobject
+PlanoTreinoAtualizarSchemaExpand allobject
+RecursoRemovidoSchemaExpand allobject
+ItemPlanoTreinoCriadoSchemaExpand allobject
+ItemPlanoTreinoCriarSchemaExpand allobject
+ItemPlanoTreinoAtualizarSchemaExpand allobject
+SessaoTreinoCriadaSchemaExpand allobject
+SessaoTreinoCriarSchemaExpand allobject
+SessaoTreinoSchemaExpand allobject
+SessoesTreinoListaSchemaExpand allobject
+SessaoTreinoAtualizarSchemaExpand allobject
