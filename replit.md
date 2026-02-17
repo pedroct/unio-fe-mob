@@ -97,8 +97,11 @@ Preferred communication style: Simple, everyday language.
 - **Security:** Auth required, user-scoped queries, rate limiting (30 req/min per user+MAC composite key), audit logging
 - **Atomic Operations:** Association/discard use DB transactions with SELECT FOR UPDATE row-level locks
 - **Rate Limiting:** Configurable window (default 60s/30 req), composite key `ble:{userId}:{mac}`, standardized 429 response `{erro, codigo: "BLE_RATE_LIMIT", detalhe}`
+  - **Limitation:** Uses `express-rate-limit` MemoryStore (in-process). Counters are not shared across multiple server instances. For horizontal scaling, swap to a Redis-backed store (`rate-limit-redis`).
 - **Metrics:** In-memory counters at `GET /api/ble/metrics` — ingestion success/error, dedup count, 429 blocks, association success/error with latency tracking
-- **Observability:** `server/ble-metrics.ts` — correlation IDs (`ble-XXXXXXXX`) in structured JSON audit logs, sensitive data stripped (no JWT/passwords/raw payloads)
+  - **Access policy:** Requires valid JWT (`requireAuth`). Any authenticated user can read metrics. Admin-only restriction can be added if needed.
+- **Observability:** `server/ble-metrics.ts` — correlation IDs in structured JSON audit logs, sensitive data stripped (no JWT/passwords/raw payloads)
+  - Correlation ID: Uses `X-Request-ID` header from client when present (max 128 chars); generates fallback `ble-XXXXXXXX` when absent
 - **E2E Tests:** 24 tests in `tests/ble-kitchen-scale.test.ts` (Phase 1+2 incl. concurrency), 10 tests in `tests/ble-phase3-security.test.ts` (rate limit, metrics, audit, regression)
 
 ### BLE Smart Scale (Xiaomi Mi Scale 2 — Mock)

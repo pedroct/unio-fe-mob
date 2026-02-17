@@ -1000,7 +1000,7 @@ export async function registerRoutes(
     },
     handler: (req, res) => {
       const userId = getUserId(req);
-      const cid = generateCorrelationId();
+      const cid = generateCorrelationId(req);
       incRateLimitBloqueio();
       auditLog(cid, "RATE_LIMIT_BLOQUEADO", userId, { mac: req.body?.mac_balanca || null });
       res.status(429).json({
@@ -1016,7 +1016,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/nutricao/diario/balanca-cozinha", requireAuth, bleRateLimit, async (req, res) => {
-    const cid = generateCorrelationId();
+    const cid = generateCorrelationId(req);
     try {
       const userId = getUserId(req);
       const parsed = ingestaoBalancaSchema.parse(req.body);
@@ -1174,7 +1174,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/nutricao/diario/pesagens-pendentes/:pesagem_id/associar", requireAuth, async (req, res) => {
-    const cid = generateCorrelationId();
+    const cid = generateCorrelationId(req);
     const t0 = Date.now();
     try {
       const userId = getUserId(req);
@@ -1246,7 +1246,7 @@ export async function registerRoutes(
   });
 
   app.delete("/api/nutricao/diario/pesagens-pendentes/:pesagem_id", requireAuth, async (req, res) => {
-    const cid = generateCorrelationId();
+    const cid = generateCorrelationId(req);
     try {
       const userId = getUserId(req);
       const pesagemId = req.params.pesagem_id;

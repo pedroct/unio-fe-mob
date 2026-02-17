@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import type { Request } from "express";
 
 export interface BleMetrics {
   ingestao: { sucesso: number; erro: number };
@@ -59,7 +60,11 @@ export function resetMetrics() {
   metrics.descarte.erro = 0;
 }
 
-export function generateCorrelationId(): string {
+export function generateCorrelationId(req?: Request): string {
+  const external = req?.headers?.["x-request-id"];
+  if (external && typeof external === "string" && external.length > 0 && external.length <= 128) {
+    return external;
+  }
   return `ble-${randomUUID().slice(0, 8)}`;
 }
 
