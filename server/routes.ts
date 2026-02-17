@@ -40,6 +40,17 @@ function handleZodError(err: unknown) {
   return { status: 500, body: { error: String(err) } };
 }
 
+const DATE_FIELDS = ["createdAt", "updatedAt", "deletedAt", "measuredAt", "expiresAt", "syncedAt", "lastSeenAt", "startDate", "endDate", "consumedAt"];
+function coerceDates(data: Record<string, any>): Record<string, any> {
+  const result = { ...data };
+  for (const key of DATE_FIELDS) {
+    if (key in result && typeof result[key] === "string") {
+      result[key] = new Date(result[key]);
+    }
+  }
+  return result;
+}
+
 function sanitizeUser(user: any) {
   const { passwordHash, tokenVersion, failedLoginAttempts, lastLoginIp, lastLoginUserAgent, ...rest } = user;
   return rest;
@@ -324,7 +335,7 @@ export async function registerRoutes(
 
   app.post("/api/body-records", requireAuth, async (req, res) => {
     try {
-      const data = insertBodyRecordSchema.parse({ ...req.body, userId: getUserId(req) });
+      const data = insertBodyRecordSchema.parse(coerceDates({ ...req.body, userId: getUserId(req) }));
       const record = await storage.createBodyRecord(data);
       res.status(201).json(record);
     } catch (err) {
@@ -335,7 +346,7 @@ export async function registerRoutes(
 
   app.patch("/api/body-records/:id", requireAuth, async (req, res) => {
     try {
-      const data = insertBodyRecordSchema.partial().parse(req.body);
+      const data = insertBodyRecordSchema.partial().parse(coerceDates(req.body));
       const record = await storage.updateBodyRecord(req.params.id, data);
       if (!record) return res.status(404).json({ error: "Record not found" });
       res.json(record);
@@ -359,7 +370,7 @@ export async function registerRoutes(
 
   app.post("/api/goals", requireAuth, async (req, res) => {
     try {
-      const data = insertGoalSchema.parse({ ...req.body, userId: getUserId(req) });
+      const data = insertGoalSchema.parse(coerceDates({ ...req.body, userId: getUserId(req) }));
       const g = await storage.createGoal(data);
       res.status(201).json(g);
     } catch (err) {
@@ -442,7 +453,7 @@ export async function registerRoutes(
 
   app.post("/api/meal-entries", requireAuth, async (req, res) => {
     try {
-      const data = insertMealEntrySchema.parse({ ...req.body, userId: getUserId(req) });
+      const data = insertMealEntrySchema.parse(coerceDates({ ...req.body, userId: getUserId(req) }));
       const entry = await storage.createMealEntry(data);
       res.status(201).json(entry);
     } catch (err) {
@@ -463,7 +474,7 @@ export async function registerRoutes(
       const existing = await storage.getMealEntry(req.params.id);
       if (!existing) return res.status(404).json({ error: "Entrada não encontrada." });
       if (existing.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
-      const data = insertMealEntrySchema.partial().parse(req.body);
+      const data = insertMealEntrySchema.partial().parse(coerceDates(req.body));
       const entry = await storage.updateMealEntry(req.params.id, data);
       res.json(entry);
     } catch (err) {
@@ -489,7 +500,7 @@ export async function registerRoutes(
 
   app.post("/api/food-stock", requireAuth, async (req, res) => {
     try {
-      const data = insertFoodStockSchema.parse({ ...req.body, userId: getUserId(req) });
+      const data = insertFoodStockSchema.parse(coerceDates({ ...req.body, userId: getUserId(req) }));
       const stock = await storage.createFoodStock(data);
       res.status(201).json(stock);
     } catch (err) {
@@ -591,7 +602,7 @@ export async function registerRoutes(
 
   app.post("/api/hydration", requireAuth, async (req, res) => {
     try {
-      const data = insertHydrationRecordSchema.parse({ ...req.body, userId: getUserId(req) });
+      const data = insertHydrationRecordSchema.parse(coerceDates({ ...req.body, userId: getUserId(req) }));
       const record = await storage.createHydrationRecord(data);
       res.status(201).json(record);
     } catch (err) {
