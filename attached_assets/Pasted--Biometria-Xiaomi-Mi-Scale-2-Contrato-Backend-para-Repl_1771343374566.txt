@@ -1,0 +1,208 @@
+# Biometria Xiaomi Mi Scale 2 — Contrato Backend para Replit
+
+**Data:** 17/02/2026  
+**Objetivo:** integrar frontend Replit com endpoints reais de biometria Xiaomi (sem mock).
+
+---
+
+## 1. Fluxo ponta a ponta (scanner externo)
+
+1. App autenticado chama `POST /api/biometria/dispositivos/{id}/preparar-pesagem`.
+2. Backend abre janela de pesagem (`em_espera_ate`) por 5 minutos.
+3. Scanner BLE externo envia leitura para `POST /api/biometria/registrar/xiaomi` (sem JWT).
+4. App faz polling de `GET /api/biometria/estado-atual` (a cada 2-3s) até detectar nova leitura ou expirar a janela.
+5. App usa `GET /api/biometria/historico?dias=30` para gráficos/listagem.
+
+---
+
+## 2. Endpoint — Preparar Pesagem
+
+### `POST /api/biometria/dispositivos/{dispositivo_id}/preparar-pesagem`
+- **Auth:** JWT obrigatório
+- **Uso:** abre janela para aceitar leitura Xiaomi sem JWT
+
+### Request
+Sem body.
+
+### Response `200`
+```json
+{
+  "id": 12,
+  "tipo": "MISCALE2",
+  "tipo_display": "Xiaomi Mi Body Composition Scale 2",
+  "nome": "Balança Xiaomi",
+  "categoria": "corporal",
+  "modelo_hardware": "",
+  "fabricante": "",
+  "chipset": "",
+  "mac_address": "AA:BB:CC:DD:EE:FF",
+  "status": "pendente",
+  "observacao": "",
+  "ultima_sincronizacao": null,
+  "em_espera_ate": "2026-02-17T21:43:10.245Z",
+  "criado_em": "2026-02-17T21:38:10.245Z"
+}
+```
+
+### Response `404`
+```json
+{ "erro": "Dispositivo não encontrado" }
+```
+
+---
+
+## 3. Endpoint — Ingestão Xiaomi (scanner)
+
+### `POST /api/biometria/registrar/xiaomi`
+- **Auth:** sem JWT (scanner externo)
+- **Regra:** só aceita se houver dispositivo com `mac_address` e `em_espera_ate >= agora`
+
+### Request
+```json
+{
+  "mac_address": "AA:BB:CC:DD:EE:FF",
+  "peso": 79.8,
+  "impedancia": 402,
+  "data_registro": "2026-02-17T21:40:30.000Z"
+}
+```
+
+### Regras de validação
+- `impedancia` igual a `0` ou `65534` é convertida para `null`.
+- Sem janela ativa: rejeita.
+- Deduplicação: por **dispositivo + usuário + peso (tolerância ±0,05kg) + impedância + janela temporal**.
+
+### Response `201` (nova leitura)
+```json
+{
+  "sucesso": true,
+  "mensagem": "Leitura registrada para usuario@exemplo.com",
+  "leitura_id": 345,
+  "usuario_email": "usuario@exemplo.com",
+  "duplicata": false,
+  "dados": {
+    "peso_kg": 79.8,
+    "imc": 24.4,
+    "gordura_percentual": 18.2,
+    "massa_muscular_kg": 61.3
+  }
+}
+```
+
+### Response `201` (duplicata ignorada)
+```json
+{
+  "sucesso": true,
+  "mensagem": "Leitura duplicada ignorada (já existe registro similar nos últimos 60s)",
+  "leitura_id": 345,
+  "usuario_email": "usuario@exemplo.com",
+  "duplicata": true,
+  "dados": {
+    "peso_kg": 79.8,
+    "imc": 24.4,
+    "gordura_percentual": 18.2,
+    "massa_muscular_kg": 61.3
+  }
+}
+```
+
+### Response `400`
+```json
+{ "erro": "Nenhuma janela de pesagem ativa encontrada para o MAC AA:BB:CC:DD:EE:FF. Inicie a pesagem no aplicativo antes de subir na balança." }
+```
+
+---
+
+## 4. Endpoint — Estado Atual
+
+### `GET /api/biometria/estado-atual`
+- **Auth:** JWT obrigatório
+- **Uso no Replit:** polling da tela de scan e cards principais
+
+### Response `200`
+```json
+{
+  "ultima_leitura": {
+    "id": 345,
+    "peso_kg": 79.8,
+    "impedancia_ohm": 402,
+    "gordura_percentual": 18.2,
+    "massa_muscular_kg": 61.3,
+    "massa_ossea_kg": 3.4,
+    "agua_percentual": 56.1,
+    "gordura_visceral": 7,
+    "imc": 24.4,
+    "tmb_kcal": 1710,
+    "idade_metabolica": 29,
+    "massa_magra_kg": 65.2,
+    "proteina_percentual": 18.9,
+    "tipo_corporal": 4,
+    "origem": "dispositivo",
+    "dispositivo_id": 12,
+    "registrado_em": "2026-02-17T21:40:30.000Z",
+    "criado_em": "2026-02-17T21:40:31.120Z"
+  },
+  "peso_atual_kg": 79.8,
+  "variacao_peso_7d": -0.4,
+  "variacao_peso_30d": -1.2,
+  "total_leituras": 54,
+  "meta_peso_kg": 76.0,
+  "peso_ate_meta": 3.8
+}
+```
+
+---
+
+## 5. Endpoint — Histórico
+
+### `GET /api/biometria/historico?dias=30`
+- **Auth:** JWT obrigatório
+- **Uso no Replit:** gráfico/tabela de evolução
+
+### Query params
+- `dias` (opcional, padrão `30`)
+- `limite` (opcional)
+
+### Response `200`
+```json
+{
+  "pontos": [
+    {
+      "data": "2026-02-17T21:40:30.000Z",
+      "peso_kg": 79.8,
+      "gordura_percentual": 18.2,
+      "imc": 24.4
+    }
+  ],
+  "media_peso_kg": 80.1,
+  "peso_minimo_kg": 79.2,
+  "peso_maximo_kg": 81.0
+}
+```
+
+---
+
+## 6. Regras para implementação no Replit
+
+- Tela de dispositivos:
+  - listar em `GET /api/biometria/dispositivos`;
+  - botão “Preparar pesagem” chama `POST /api/biometria/dispositivos/{id}/preparar-pesagem`;
+  - exibir contagem regressiva com base em `em_espera_ate`.
+
+- Tela de scan:
+  - ao iniciar, chamar `preparar-pesagem`;
+  - iniciar polling de `estado-atual` a cada 2-3 segundos;
+  - parar polling quando detectar `ultima_leitura.registrado_em` novo ou ao expirar a janela.
+
+- Tela biometria:
+  - cards com `estado-atual`;
+  - gráfico/lista com `historico`.
+
+---
+
+## 7. Status de cobertura validado
+
+- Endpoint Xiaomi sem JWT validado com testes.
+- Janela de pesagem ativa/expirada validada.
+- Tratamento de impedância inválida (`0` e `65534`) validado.
+- Deduplicação e retorno determinístico (`duplicata: true/false`) validados.
