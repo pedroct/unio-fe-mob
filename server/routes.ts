@@ -8,6 +8,7 @@ import {
   insertGoalSchema,
   insertFoodSchema,
   insertFoodStockSchema,
+  insertHydrationRecordSchema,
   syncPullQuerySchema,
   syncPushRequestSchema,
 } from "@shared/schema";
@@ -234,6 +235,33 @@ export async function registerRoutes(
 
   app.delete("/api/food-stock/:id", async (req, res) => {
     await storage.softDeleteFoodStock(req.params.id);
+    res.status(204).end();
+  });
+
+  // ── Hydration Records ──
+  app.get("/api/users/:userId/hydration/today", async (req, res) => {
+    try {
+      const result = await storage.getHydrationTotalToday(req.params.userId);
+      res.json(result);
+    } catch (err) {
+      const { status, body } = handleZodError(err);
+      res.status(status).json(body);
+    }
+  });
+
+  app.post("/api/hydration", async (req, res) => {
+    try {
+      const data = insertHydrationRecordSchema.parse(req.body);
+      const record = await storage.createHydrationRecord(data);
+      res.status(201).json(record);
+    } catch (err) {
+      const { status, body } = handleZodError(err);
+      res.status(status).json(body);
+    }
+  });
+
+  app.delete("/api/hydration/:id", async (req, res) => {
+    await storage.softDeleteHydrationRecord(req.params.id);
     res.status(204).end();
   });
 

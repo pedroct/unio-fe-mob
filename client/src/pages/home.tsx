@@ -3,6 +3,9 @@ import { Bell, ChevronRight, Droplets, Plus, TrendingUp, Dumbbell } from "lucide
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+
+const DEFAULT_USER_ID = "5403356d-c894-43f3-846a-513f8e1ad4bb";
 
 // Mock Data
 const WEIGHT_DATA = [
@@ -17,6 +20,22 @@ const WEIGHT_DATA = [
 
 export default function HomeScreen() {
   const [, setLocation] = useLocation();
+
+  const { data: hydrationData } = useQuery({
+    queryKey: ["hydration", "today", DEFAULT_USER_ID],
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${DEFAULT_USER_ID}/hydration/today`);
+      if (!res.ok) throw new Error("Failed to fetch hydration");
+      return res.json() as Promise<{ totalMl: number; goal: number }>;
+    },
+    refetchOnWindowFocus: true,
+  });
+
+  const hydrationMl = hydrationData?.totalMl ?? 0;
+  const hydrationGoal = hydrationData?.goal ?? 2500;
+  const hydrationL = (hydrationMl / 1000).toFixed(1);
+  const hydrationGoalL = (hydrationGoal / 1000).toFixed(1);
+  const hydrationDots = Math.min(Math.ceil((hydrationMl / hydrationGoal) * 5), 5);
 
   return (
     <Layout>
@@ -105,14 +124,15 @@ export default function HomeScreen() {
             <p className="text-[11px] text-[#8B9286] leading-tight">Registre refeições para atingir a meta.</p>
           </motion.button>
           
-          <motion.button 
+          <motion.button
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
+            onClick={() => setLocation("/hydration")}
             className="bg-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/5 border border-[#E8EBE5] text-left active:scale-[0.98] transition-transform"
           >
             <h3 className="font-display text-sm font-semibold text-[#2F5641] mb-1">Meta Água</h3>
-            <p className="text-[11px] text-[#8B9286] leading-tight">1.2L de 2.5L <br/><span className="text-[#3D7A8C] font-medium">Quase lá!</span></p>
+            <p data-testid="text-water-goal-card" className="text-[11px] text-[#8B9286] leading-tight">{hydrationL}L de {hydrationGoalL}L <br/><span className="text-[#3D7A8C] font-medium">{hydrationMl >= hydrationGoal ? "Meta batida!" : hydrationMl > 0 ? "Continue assim!" : "Comece a beber!"}</span></p>
           </motion.button>
         </div>
 
@@ -251,7 +271,7 @@ export default function HomeScreen() {
 
         {/* Water Card */}
         <section className="bg-[#3D7A8C] text-white p-5 rounded-2xl shadow-lg shadow-[#3D7A8C]/20 flex items-center justify-between">
-           <div 
+           <div
              onClick={() => setLocation("/hydration")}
              className="cursor-pointer"
            >
@@ -259,15 +279,16 @@ export default function HomeScreen() {
                <Droplets size={18} className="fill-current" />
                <h2 className="text-xs font-bold uppercase tracking-wide">Hidratação</h2>
              </div>
-             <p className="text-2xl font-display mb-1">1.25 <span className="text-sm opacity-70">/ 2.5 L</span></p>
+             <p data-testid="text-hydration-card" className="text-2xl font-display mb-1">{hydrationL} <span className="text-sm opacity-70">/ {hydrationGoalL} L</span></p>
              <div className="flex gap-1 mt-2">
                {[1, 2, 3, 4, 5].map(i => (
-                 <div key={i} className={`w-3 h-3 rounded-full border border-white ${i <= 3 ? "bg-white" : "bg-transparent"}`} />
+                 <div key={i} className={`w-3 h-3 rounded-full border border-white ${i <= hydrationDots ? "bg-white" : "bg-transparent"}`} />
                ))}
              </div>
            </div>
-           
-           <button 
+
+           <button
+             data-testid="button-add-hydration"
              onClick={() => setLocation("/hydration")}
              className="bg-white text-[#3D7A8C] w-12 h-12 rounded-full flex items-center justify-center shadow-md hover:scale-105 active:scale-90 transition-transform"
            >

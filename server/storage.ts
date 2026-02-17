@@ -1,4 +1,4 @@
-import { eq, and, gt, isNull, asc, or, sql } from "drizzle-orm";
+import { eq, and, gt, gte, lt, isNull, asc, desc, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   users,
@@ -7,6 +7,7 @@ import {
   goals,
   foods,
   foodStock,
+  hydrationRecords,
   syncLog,
   type User,
   type InsertUser,
@@ -20,6 +21,8 @@ import {
   type InsertFood,
   type FoodStock,
   type InsertFoodStock,
+  type HydrationRecord,
+  type InsertHydrationRecord,
 } from "@shared/schema";
 
 const SYNC_TABLES = {
@@ -29,6 +32,7 @@ const SYNC_TABLES = {
   goals,
   foods,
   food_stock: foodStock,
+  hydration_records: hydrationRecords,
 } as const;
 
 type SyncTableName = keyof typeof SYNC_TABLES;
@@ -73,6 +77,11 @@ export interface IStorage {
   createFoodStock(stock: InsertFoodStock): Promise<FoodStock>;
   updateFoodStock(id: string, data: Partial<InsertFoodStock>): Promise<FoodStock | undefined>;
   softDeleteFoodStock(id: string): Promise<void>;
+
+  createHydrationRecord(record: InsertHydrationRecord): Promise<HydrationRecord>;
+  getHydrationByUserToday(userId: string): Promise<HydrationRecord[]>;
+  getHydrationTotalToday(userId: string): Promise<{ totalMl: number; goal: number; records: HydrationRecord[] }>;
+  softDeleteHydrationRecord(id: string): Promise<void>;
 
   syncPull(opts: {
     cursor?: string;
@@ -291,6 +300,45 @@ export class DatabaseStorage implements IStorage {
     const now = new Date();
     await db.update(foodStock).set({ deletedAt: now, updatedAt: now }).where(eq(foodStock.id, id));
     await this.logSync("food_stock", id, "delete", null);
+  }
+
+  // ── Hydration Records ──
+  async createHydrationRecord(data: InsertHydrationRecord): Promise<HydrationRecord> {
+    const [r] = await db.insert(hydrationRecords).values(data).returning();
+    await this.logSync("hydration_records", r.id, "create", r);
+    return r;
+  }
+
+  async getHydrationByUserToday(userId: string): Promise<HydrationRecord[]> {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    return db
+      .select()
+      .from(hydrationRecords)
+      .where(
+        and(
+          eq(hydrationRecords.userId, userId),
+          gte(hydrationRecords.recordedAt, todayStart),
+          lt(hydrationRecords.recordedAt, todayEnd),
+          notDeleted(hydrationRecords)
+        )
+      )
+      .orderBy(desc(hydrationRecords.recordedAt));
+  }
+
+  async getHydrationTotalToday(userId: string): Promise<{ totalMl: number; goal: number; records: HydrationRecord[] }> {
+    const records = await this.getHydrationByUserToday(userId);
+    const totalMl = records.reduce((sum, r) => sum + r.amountMl, 0);
+    return { totalMl, goal: 2500, records };
+  }
+
+  async softDeleteHydrationRecord(id: string): Promise<void> {
+    const now = new Date();
+    await db.update(hydrationRecords).set({ deletedAt: now, updatedAt: now }).where(eq(hydrationRecords.id, id));
+    await this.logSync("hydration_records", id, "delete", null);
   }
 
   // ── Sync Pull (cursor-based, deterministic ordering) ──

@@ -166,6 +166,29 @@ export const foodStock = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// HYDRATION RECORDS (registros de hidratação)
+// ---------------------------------------------------------------------------
+export const hydrationRecords = pgTable(
+  "hydration_records",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    amountMl: integer("amount_ml").notNull(),
+    beverageType: text("beverage_type").notNull().default("water"),
+    label: text("label").notNull().default("Água"),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("idx_hydration_user_id").on(t.userId),
+    index("idx_hydration_updated_at").on(t.updatedAt),
+    index("idx_hydration_recorded_at").on(t.recordedAt),
+  ]
+);
+
+// ---------------------------------------------------------------------------
 // SYNC LOG GLOBAL (registro_sincronizacao_global)
 // ---------------------------------------------------------------------------
 export const syncLog = pgTable(
@@ -243,6 +266,13 @@ export const insertFoodStockSchema = createInsertSchema(foodStock).omit({
   deletedAt: true,
 });
 
+export const insertHydrationRecordSchema = createInsertSchema(hydrationRecords).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  deletedAt: true,
+});
+
 // ---------------------------------------------------------------------------
 // Sync API Schemas
 // ---------------------------------------------------------------------------
@@ -287,6 +317,9 @@ export type Food = typeof foods.$inferSelect;
 
 export type InsertFoodStock = z.infer<typeof insertFoodStockSchema>;
 export type FoodStock = typeof foodStock.$inferSelect;
+
+export type InsertHydrationRecord = z.infer<typeof insertHydrationRecordSchema>;
+export type HydrationRecord = typeof hydrationRecords.$inferSelect;
 
 export type SyncPullQuery = z.infer<typeof syncPullQuerySchema>;
 export type SyncPushChange = z.infer<typeof syncPushChangeSchema>;
