@@ -58,15 +58,15 @@ export default function NutritionAddScreen() {
     itens: UnifiedFoodItem[];
     total: number;
   }>({
-    queryKey: ["/api/nutricao/alimentos-unificados/buscar", debouncedSearch, fonteFilter],
+    queryKey: ["nutricao", "alimentos", "buscar", debouncedSearch, fonteFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
-      params.set("q", debouncedSearch);
+      if (debouncedSearch) params.set("q", debouncedSearch);
       params.set("limite", "30");
       if (fonteFilter !== "TODOS") {
         params.set("fonte", fonteFilter);
       }
-      const res = await apiFetch(`/api/nutricao/alimentos-unificados/buscar?${params.toString()}`);
+      const res = await apiFetch(`/api/nutricao/alimentos/buscar?${params.toString()}`);
       if (!res.ok) throw new Error("Erro ao buscar alimentos");
       return res.json();
     },
