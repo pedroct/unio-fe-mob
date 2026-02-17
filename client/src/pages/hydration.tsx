@@ -201,16 +201,16 @@ export default function HydrationScreen() {
           </section>
         </main>
 
-        {/* Manual Input Modal - FULL SCREEN OVERLAY to match design */}
+        {/* Manual Input Modal - FULL SCREEN OVERLAY */}
         <AnimatePresence>
           {showManualInput && (
             <motion.div 
               initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed inset-0 bg-[#F5F7FA] z-50 flex flex-col"
+              className="fixed inset-0 bg-[#F5F7FA] z-[60] flex flex-col"
             >
               {/* Modal Header */}
-              <div className="px-6 pt-14 pb-4 flex items-center justify-between">
+              <div className="px-6 pt-12 pb-2 flex items-center justify-between shrink-0">
                 <button className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-[#2F5641] shadow-sm">
                    <Mic size={20} />
                 </button>
@@ -223,9 +223,10 @@ export default function HydrationScreen() {
                 </button>
               </div>
 
-              {/* Main Display Area */}
-              <div className="flex-1 flex flex-col items-center justify-start pt-8 pb-4">
-                 <div className="text-center mb-8">
+              {/* Scrollable Content Area */}
+              <div className="flex-1 flex flex-col overflow-y-auto">
+                 {/* Amount Display */}
+                 <div className="text-center mt-4 mb-6 shrink-0">
                     <div className="flex items-baseline justify-center gap-1">
                        <span className="font-display text-6xl font-bold text-[#2F5641] tracking-tight">{manualAmount}</span>
                        <span className="text-2xl font-semibold text-[#2F5641] opacity-60">ml</span>
@@ -235,76 +236,77 @@ export default function HydrationScreen() {
                     </p>
                  </div>
 
-                 {/* Wheel Picker Simulation */}
-                 <div className="w-full relative h-[200px] overflow-hidden mb-6 mask-gradient-y">
-                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-12 bg-[#E8EBE5]/50 rounded-xl mx-6 -z-10" />
+                 {/* Wheel Picker Simulation - Compact */}
+                 <div className="w-full relative h-[140px] overflow-hidden mb-4 mask-gradient-y shrink-0">
+                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-10 bg-[#E8EBE5]/50 rounded-xl mx-6 -z-10" />
                     
-                    <div className="h-full overflow-y-auto snap-y snap-mandatory py-[80px] px-6 scrollbar-hide">
+                    <div className="h-full overflow-y-auto snap-y snap-mandatory py-[50px] px-6 scrollbar-hide">
                        {BEVERAGE_TYPES.map((type) => (
                          <div 
                            key={type.id}
                            onClick={() => setManualType(type.id)}
-                           className={`h-10 flex items-center justify-center gap-3 snap-center cursor-pointer transition-all duration-300 ${manualType === type.id ? 'opacity-100 scale-110 font-bold text-[#2F5641]' : 'opacity-30 scale-90 text-[#8B9286]'}`}
+                           className={`h-10 flex items-center justify-center gap-3 snap-center cursor-pointer transition-all duration-300 ${manualType === type.id ? 'opacity-100 scale-105 font-bold text-[#2F5641]' : 'opacity-40 scale-95 text-[#8B9286]'}`}
                          >
-                            <type.icon size={18} />
-                            <span>{type.label}</span>
+                            <type.icon size={16} />
+                            <span className="text-sm">{type.label}</span>
                          </div>
                        ))}
                     </div>
                  </div>
 
-                 {/* Date/Time Selectors */}
-                 <div className="flex gap-3 mb-6 px-6 w-full max-w-[320px]">
-                    <button className="flex-1 bg-white py-3 px-4 rounded-xl shadow-sm text-sm font-semibold text-[#2F5641] flex items-center justify-center gap-2">
-                       <Calendar size={16} className="opacity-50" />
-                       {manualDate}
-                    </button>
-                    <button className="flex-1 bg-white py-3 px-4 rounded-xl shadow-sm text-sm font-semibold text-[#2F5641] flex items-center justify-center gap-2">
-                       <Clock size={16} className="opacity-50" />
-                       {manualTime}
-                    </button>
-                 </div>
+                 {/* Bottom Controls Container */}
+                 <div className="mt-auto bg-white rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.03)] pt-6 px-6 pb-8">
+                     {/* Date/Time Selectors */}
+                     <div className="flex gap-3 mb-4 w-full">
+                        <button className="flex-1 bg-[#FAFBF8] border border-[#E8EBE5] py-3 px-2 rounded-xl text-xs font-semibold text-[#2F5641] flex items-center justify-center gap-2">
+                           <Calendar size={14} className="opacity-50" />
+                           {manualDate}
+                        </button>
+                        <button className="flex-1 bg-[#FAFBF8] border border-[#E8EBE5] py-3 px-2 rounded-xl text-xs font-semibold text-[#2F5641] flex items-center justify-center gap-2">
+                           <Clock size={14} className="opacity-50" />
+                           {manualTime}
+                        </button>
+                     </div>
 
-                 {/* Numeric Keypad */}
-                 <div className="w-full max-w-[320px] px-4 grid grid-cols-3 gap-2 mb-6">
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                      <button 
-                        key={num}
-                        onClick={() => handleKeypadPress(num.toString())}
-                        className="h-12 bg-white rounded-lg shadow-sm text-xl font-semibold text-[#2F5641] active:bg-gray-50 active:scale-95 transition-transform"
-                      >
-                        {num}
-                      </button>
-                    ))}
-                    <button 
-                      onClick={() => handleKeypadPress("00")}
-                      className="h-12 bg-white rounded-lg shadow-sm text-xl font-semibold text-[#2F5641] active:bg-gray-50 active:scale-95 transition-transform"
-                    >
-                      00
-                    </button>
-                    <button 
-                      onClick={() => handleKeypadPress("0")}
-                      className="h-12 bg-white rounded-lg shadow-sm text-xl font-semibold text-[#2F5641] active:bg-gray-50 active:scale-95 transition-transform"
-                    >
-                      0
-                    </button>
-                    <button 
-                      onClick={() => handleKeypadPress("backspace")}
-                      className="h-12 bg-white rounded-lg shadow-sm flex items-center justify-center text-[#BE4E35] active:bg-gray-50 active:scale-95 transition-transform"
-                    >
-                      <Delete size={20} />
-                    </button>
-                 </div>
-              </div>
+                     {/* Numeric Keypad - Compact */}
+                     <div className="grid grid-cols-3 gap-2 mb-4">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                          <button 
+                            key={num}
+                            onClick={() => handleKeypadPress(num.toString())}
+                            className="h-10 bg-[#FAFBF8] border border-[#E8EBE5] rounded-lg text-lg font-semibold text-[#2F5641] active:bg-[#E8EBE5] active:scale-95 transition-transform"
+                          >
+                            {num}
+                          </button>
+                        ))}
+                        <button 
+                          onClick={() => handleKeypadPress("00")}
+                          className="h-10 bg-[#FAFBF8] border border-[#E8EBE5] rounded-lg text-lg font-semibold text-[#2F5641] active:bg-[#E8EBE5] active:scale-95 transition-transform"
+                        >
+                          00
+                        </button>
+                        <button 
+                          onClick={() => handleKeypadPress("0")}
+                          className="h-10 bg-[#FAFBF8] border border-[#E8EBE5] rounded-lg text-lg font-semibold text-[#2F5641] active:bg-[#E8EBE5] active:scale-95 transition-transform"
+                        >
+                          0
+                        </button>
+                        <button 
+                          onClick={() => handleKeypadPress("backspace")}
+                          className="h-10 bg-[#FAFBF8] border border-[#E8EBE5] rounded-lg flex items-center justify-center text-[#BE4E35] active:bg-[#E8EBE5] active:scale-95 transition-transform"
+                        >
+                          <Delete size={18} />
+                        </button>
+                     </div>
 
-              {/* Action Button */}
-              <div className="px-6 pb-8">
-                <button 
-                  onClick={handleManualSubmit}
-                  className="w-full bg-[#4A90E2] text-white py-4 rounded-full font-bold text-lg shadow-lg shadow-[#4A90E2]/30 active:scale-[0.98] transition-all"
-                >
-                  Adicionar
-                </button>
+                     {/* Action Button - Always Visible */}
+                     <button 
+                       onClick={handleManualSubmit}
+                       className="w-full bg-[#4A90E2] text-white py-3.5 rounded-xl font-bold text-base shadow-lg shadow-[#4A90E2]/25 active:scale-[0.98] transition-all"
+                     >
+                       Adicionar
+                     </button>
+                 </div>
               </div>
             </motion.div>
           )}
