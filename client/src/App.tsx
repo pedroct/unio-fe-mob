@@ -21,6 +21,7 @@ import TrainingDetailsScreen from "@/pages/training/details";
 import TrainingPlayerScreen from "@/pages/training/player";
 import SupplementsScreen from "@/pages/supplements";
 import PantryScreen from "@/pages/pantry";
+import ShoppingListScreen from "@/pages/pantry/shopping-list";
 import HydrationScreen from "@/pages/hydration";
 import ProfileScreen from "@/pages/profile";
 import { useState } from "react";
@@ -41,6 +42,7 @@ function Router() {
       <Route path="/nutrition/add" component={NutritionAddScreen} />
       <Route path="/nutrition/scale" component={NutritionScaleScreen} />
       <Route path="/pantry" component={PantryScreen} />
+      <Route path="/pantry/shopping-list" component={ShoppingListScreen} />
       <Route path="/hydration" component={HydrationScreen} />
 
       {/* Training Module */}

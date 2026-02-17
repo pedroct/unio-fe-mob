@@ -92,17 +92,20 @@ export default function PantryScreen() {
           {/* Shopping List Alert */}
           <section 
             className="bg-[#2F5641] text-white p-5 rounded-2xl shadow-lg shadow-[#2F5641]/20 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform"
-            onClick={() => alert("Lista de compras gerada com sucesso!")}
+            onClick={() => setLocation("/pantry/shopping-list")}
+            data-testid="button-shopping-list"
           >
              <div>
                <div className="flex items-center gap-2 mb-1">
                  <ShoppingCart size={18} />
                  <h2 className="text-xs font-bold uppercase tracking-wide">Lista de Compras</h2>
                </div>
-               <p className="text-sm opacity-90">2 itens críticos precisam de reposição.</p>
+               <p className="text-sm opacity-90">
+                 {INVENTORY_DATA.filter(i => i.status === "low" || i.status === "critical").length} itens precisam de reposição.
+               </p>
              </div>
              <div className="bg-white/20 w-8 h-8 rounded-full flex items-center justify-center">
-               <span className="font-bold text-xs">2</span>
+               <span className="font-bold text-xs">{INVENTORY_DATA.filter(i => i.status === "low" || i.status === "critical").length}</span>
              </div>
           </section>
 
