@@ -26,16 +26,6 @@ const MEAL_NAMES: Record<string, string> = {
   dinner: "Jantar",
 };
 
-const WEIGHT_DATA = [
-  { day: 'Seg', weight: 72.5 },
-  { day: 'Ter', weight: 72.4 },
-  { day: 'Qua', weight: 72.6 },
-  { day: 'Qui', weight: 72.3 },
-  { day: 'Sex', weight: 72.2 },
-  { day: 'Sab', weight: 72.1 },
-  { day: 'Dom', weight: 72.0 },
-];
-
 export default function HomeScreen() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -51,6 +41,41 @@ export default function HomeScreen() {
     },
     enabled: false,
   });
+
+  const { data: estadoBio } = useQuery<{
+    ultima_leitura: {
+      peso_kg: number;
+      gordura_percentual: number | null;
+      massa_muscular_kg: number | null;
+      agua_percentual: number | null;
+    } | null;
+    peso_atual_kg: number | null;
+  }>({
+    queryKey: ["biometria", "estado-atual"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/biometria/estado-atual");
+      if (!res.ok) throw new Error("Erro");
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const { data: historicoBio } = useQuery<{
+    pontos: { data: string; peso_kg: number }[];
+  }>({
+    queryKey: ["biometria", "historico", "7d"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/biometria/historico?dias=7");
+      if (!res.ok) throw new Error("Erro");
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const weightChartData = (historicoBio?.pontos || []).map((p) => ({
+    day: new Date(p.data).toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", ""),
+    weight: p.peso_kg,
+  }));
 
   const { data: mealSummary } = useQuery<{
     totalCalories: number;
@@ -289,34 +314,48 @@ export default function HomeScreen() {
                <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide flex items-center gap-2">
                  <TrendingUp size={16} /> Composição
                </h2>
-               <span className="text-xs font-semibold text-[#2F5641]">72.0 kg</span>
+               <span className="text-xs font-semibold text-[#2F5641]" data-testid="text-body-weight">
+                 {estadoBio?.peso_atual_kg != null ? `${estadoBio.peso_atual_kg} kg` : "—"}
+               </span>
              </div>
              
              <div className="h-[60px] w-full mb-4">
-               <ResponsiveContainer width="100%" height="100%">
-                 <AreaChart data={WEIGHT_DATA}>
-                   <defs>
-                     <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
-                       <stop offset="5%" stopColor="#3D7A8C" stopOpacity={0.3}/>
-                       <stop offset="95%" stopColor="#3D7A8C" stopOpacity={0}/>
-                     </linearGradient>
-                   </defs>
-                   <Area type="monotone" dataKey="weight" stroke="#3D7A8C" strokeWidth={2} fillOpacity={1} fill="url(#colorWeight)" />
-                 </AreaChart>
-               </ResponsiveContainer>
+               {weightChartData.length > 1 ? (
+                 <ResponsiveContainer width="100%" height="100%">
+                   <AreaChart data={weightChartData}>
+                     <defs>
+                       <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
+                         <stop offset="5%" stopColor="#3D7A8C" stopOpacity={0.3}/>
+                         <stop offset="95%" stopColor="#3D7A8C" stopOpacity={0}/>
+                       </linearGradient>
+                     </defs>
+                     <Area type="monotone" dataKey="weight" stroke="#3D7A8C" strokeWidth={2} fillOpacity={1} fill="url(#colorWeight)" />
+                   </AreaChart>
+                 </ResponsiveContainer>
+               ) : (
+                 <div className="flex items-center justify-center h-full">
+                   <p className="text-[10px] text-[#8B9286]">Registre pesagens para ver o gráfico</p>
+                 </div>
+               )}
              </div>
              
              <div className="flex justify-between border-t border-[#E8EBE5] pt-3">
                 <div className="text-center">
-                   <span className="block text-xs font-bold text-[#2F5641]">14.5%</span>
+                   <span className="block text-xs font-bold text-[#2F5641]">
+                     {estadoBio?.ultima_leitura?.gordura_percentual != null ? `${estadoBio.ultima_leitura.gordura_percentual}%` : "—"}
+                   </span>
                    <span className="text-[9px] text-[#8B9286] uppercase">Gordura</span>
                 </div>
                 <div className="text-center">
-                   <span className="block text-xs font-bold text-[#2F5641]">38.2kg</span>
+                   <span className="block text-xs font-bold text-[#2F5641]">
+                     {estadoBio?.ultima_leitura?.massa_muscular_kg != null ? `${estadoBio.ultima_leitura.massa_muscular_kg}kg` : "—"}
+                   </span>
                    <span className="text-[9px] text-[#8B9286] uppercase">Músculo</span>
                 </div>
                 <div className="text-center">
-                   <span className="block text-xs font-bold text-[#2F5641]">61%</span>
+                   <span className="block text-xs font-bold text-[#2F5641]">
+                     {estadoBio?.ultima_leitura?.agua_percentual != null ? `${estadoBio.ultima_leitura.agua_percentual}%` : "—"}
+                   </span>
                    <span className="text-[9px] text-[#8B9286] uppercase">Água</span>
                 </div>
              </div>
@@ -329,6 +368,7 @@ export default function HomeScreen() {
                setLocation("/biometrics/scan");
              }}
              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#2F5641] text-white flex items-center justify-center shadow-md active:scale-90 transition-transform"
+             data-testid="button-add-body-reading"
            >
              <Plus size={16} />
            </button>
