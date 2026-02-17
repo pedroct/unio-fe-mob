@@ -1,7 +1,7 @@
 import Layout from "@/components/layout";
 import { ChevronLeft, ShoppingCart, Check, Plus, Minus, ShoppingBag } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { FoodStock } from "@shared/schema";
@@ -29,6 +29,74 @@ function defaultBuyQty(item: StockItem): number {
 function buyQtyToStockUnits(qty: number, unit: string): number {
   if (unit === "kg") return qty * 1000;
   return qty;
+}
+
+function stepSize(unit: string): number {
+  if (unit === "kg") return 1;
+  if (unit === "un") return 1;
+  if (unit === "ml") return 100;
+  return 100;
+}
+
+function QtyInput({
+  value,
+  onChange,
+  unit,
+  size = "sm",
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  unit: string;
+  size?: "sm" | "md";
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const step = stepSize(unit);
+  const unitLabel = unit === "kg" ? "kg" : unit === "ml" ? "ml" : unit === "un" ? "un" : "g";
+  const isMd = size === "md";
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+    if (raw === "") return onChange(0);
+    const parsed = parseFloat(raw);
+    if (!isNaN(parsed) && parsed >= 0) onChange(parsed);
+  };
+
+  const handleBlur = () => {
+    if (value < 1) onChange(1);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={() => onChange(Math.max(1, value - step))}
+        className={`${isMd ? "w-9 h-9" : "w-7 h-7"} rounded-lg bg-[#F0F2ED] border border-[#E8EBE5] flex items-center justify-center text-[#2F5641] active:bg-[#E0E3DB] transition-colors`}
+      >
+        <Minus size={isMd ? 16 : 14} />
+      </button>
+      <button
+        onClick={() => inputRef.current?.focus()}
+        className={`${isMd ? "min-w-[80px] h-9 text-base" : "min-w-[60px] h-7 text-sm"} rounded-lg bg-white border border-[#E8EBE5] flex items-center justify-center font-bold text-[#2F5641] px-2 gap-1 cursor-text`}
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={handleInputChange}
+          onBlur={handleBlur}
+          className={`${isMd ? "w-10 text-base" : "w-8 text-sm"} bg-transparent text-center font-bold text-[#2F5641] outline-none`}
+          data-testid="input-quantity"
+        />
+        <span className={`${isMd ? "text-xs" : "text-[10px]"} text-[#8B9286] font-medium`}>{unitLabel}</span>
+      </button>
+      <button
+        onClick={() => onChange(value + step)}
+        className={`${isMd ? "w-9 h-9" : "w-7 h-7"} rounded-lg bg-[#2F5641] flex items-center justify-center text-white active:bg-[#264835] transition-colors`}
+      >
+        <Plus size={isMd ? 16 : 14} />
+      </button>
+    </div>
+  );
 }
 
 export default function ShoppingListScreen() {
@@ -90,11 +158,6 @@ export default function ShoppingListScreen() {
     return buyQuantities[item.id] ?? defaultBuyQty(item);
   }, [buyQuantities]);
 
-  const updateBuyQty = (id: string, delta: number, item: StockItem) => {
-    const current = buyQuantities[id] ?? defaultBuyQty(item);
-    setBuyQuantities(prev => ({ ...prev, [id]: Math.max(1, current + delta) }));
-  };
-
   const handleBuyClick = (item: StockItem) => {
     const qty = getBuyQty(item);
     setConfirmQty(qty);
@@ -118,15 +181,6 @@ export default function ShoppingListScreen() {
       case 'low': return 'Baixo';
       case 'critical': return 'Crítico';
       default: return '';
-    }
-  };
-
-  const getBuyUnit = (unit: string) => {
-    switch (unit) {
-      case 'kg': return 'kg';
-      case 'ml': return 'ml';
-      case 'un': return 'un';
-      default: return 'g';
     }
   };
 
@@ -242,25 +296,12 @@ export default function ShoppingListScreen() {
                             {!isDone && !isConfirming && (
                               <div className="flex items-center justify-between mt-3">
                                 <span className="text-[11px] text-[#8B9286]">Comprar:</span>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => updateBuyQty(item.id, -1, item)}
-                                    className="w-7 h-7 rounded-lg bg-[#F0F2ED] border border-[#E8EBE5] flex items-center justify-center text-[#2F5641]"
-                                    data-testid={`button-decrease-${item.id}`}
-                                  >
-                                    <Minus size={14} />
-                                  </button>
-                                  <span className="text-sm font-bold text-[#2F5641] min-w-[40px] text-center" data-testid={`text-quantity-${item.id}`}>
-                                    {getBuyQty(item)} {getBuyUnit(item.unit)}
-                                  </span>
-                                  <button
-                                    onClick={() => updateBuyQty(item.id, 1, item)}
-                                    className="w-7 h-7 rounded-lg bg-[#2F5641] flex items-center justify-center text-white"
-                                    data-testid={`button-increase-${item.id}`}
-                                  >
-                                    <Plus size={14} />
-                                  </button>
-                                </div>
+                                <QtyInput
+                                  value={getBuyQty(item)}
+                                  onChange={(v) => setBuyQuantities(prev => ({ ...prev, [item.id]: v }))}
+                                  unit={item.unit}
+                                  size="sm"
+                                />
                               </div>
                             )}
                           </div>
@@ -284,22 +325,13 @@ export default function ShoppingListScreen() {
                             className="border-t border-[#E8EBE5] bg-[#FAFBF8] p-4 space-y-3"
                           >
                             <p className="text-xs text-[#2F5641] font-semibold">Quanto comprou de fato?</p>
-                            <div className="flex items-center justify-center gap-3">
-                              <button
-                                onClick={() => setConfirmQty(q => Math.max(1, q - 1))}
-                                className="w-9 h-9 rounded-lg bg-white border border-[#E8EBE5] flex items-center justify-center text-[#2F5641]"
-                              >
-                                <Minus size={16} />
-                              </button>
-                              <span className="text-lg font-bold text-[#2F5641] min-w-[60px] text-center">
-                                {confirmQty} {getBuyUnit(item.unit)}
-                              </span>
-                              <button
-                                onClick={() => setConfirmQty(q => q + 1)}
-                                className="w-9 h-9 rounded-lg bg-[#2F5641] flex items-center justify-center text-white"
-                              >
-                                <Plus size={16} />
-                              </button>
+                            <div className="flex items-center justify-center">
+                              <QtyInput
+                                value={confirmQty}
+                                onChange={setConfirmQty}
+                                unit={item.unit}
+                                size="md"
+                              />
                             </div>
                             <div className="flex gap-2">
                               <button
