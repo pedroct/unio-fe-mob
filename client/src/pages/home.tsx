@@ -34,12 +34,14 @@ export default function HomeScreen() {
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-  const { data: hydrationData } = useQuery({
+  const { data: hydrationData } = useQuery<{ consumido_ml: number; meta_ml: number; restante_ml: number; percentual: number; atingiu_meta: boolean }>({
     queryKey: ["hydration", "resumo", today],
     queryFn: async () => {
-      return { consumido_ml: 0, meta_ml: 2500, restante_ml: 2500, percentual: 0, atingiu_meta: false } as { consumido_ml: number; meta_ml: number; restante_ml: number; percentual: number; atingiu_meta: boolean };
+      const res = await apiFetch(`/api/hidratacao/resumo?data=${today}`);
+      if (!res.ok) throw new Error("Erro");
+      return res.json();
     },
-    enabled: false,
+    enabled: !!userId,
   });
 
   const { data: estadoBio } = useQuery<{
