@@ -245,7 +245,10 @@ export default function HomeScreen() {
 
         {/* Water Card */}
         <section className="bg-[#3D7A8C] text-white p-5 rounded-2xl shadow-lg shadow-[#3D7A8C]/20 flex items-center justify-between">
-           <div>
+           <div 
+             onClick={() => setLocation("/hydration")}
+             className="cursor-pointer"
+           >
              <div className="flex items-center gap-2 mb-2">
                <Droplets size={18} className="fill-current" />
                <h2 className="text-xs font-bold uppercase tracking-wide">Hidratação</h2>
@@ -259,7 +262,7 @@ export default function HomeScreen() {
            </div>
            
            <button 
-             onClick={() => alert("Módulo de Hidratação em breve!")}
+             onClick={() => setLocation("/hydration")}
              className="bg-white text-[#3D7A8C] w-12 h-12 rounded-full flex items-center justify-center shadow-md hover:scale-105 active:scale-90 transition-transform"
            >
              <Plus size={24} strokeWidth={3} />
