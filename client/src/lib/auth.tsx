@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import type { User } from "@shared/schema";
+import { setAccessToken, apiFetch } from "./api";
 
-type AuthUser = Omit<User, "passwordHash">;
+type AuthUser = Omit<User, "passwordHash" | "tokenVersion" | "failedLoginAttempts" | "lastLoginIp" | "lastLoginUserAgent">;
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -10,6 +11,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -19,38 +21,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const bootDone = useRef(false);
+
+  const boot = useCallback(async () => {
+    if (bootDone.current) return;
+    bootDone.current = true;
+
+    try {
+      const refreshRes = await fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (refreshRes.ok) {
+        const data = await refreshRes.json();
+        setAccessToken(data.accessToken);
+        setUser(data.user);
+      } else {
+        setAccessToken(null);
+        setUser(null);
+      }
+    } catch {
+      setAccessToken(null);
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    boot();
+  }, [boot]);
 
   const refreshUser = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/me");
+      const res = await apiFetch("/api/auth/me");
       if (res.ok) {
         const data = await res.json();
         setUser(data);
       } else {
         setUser(null);
+        setAccessToken(null);
       }
     } catch {
       setUser(null);
+      setAccessToken(null);
     }
   }, []);
-
-  useEffect(() => {
-    refreshUser().finally(() => setIsLoading(false));
-  }, [refreshUser]);
 
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error || "Erro ao fazer login.");
-      throw new Error(data.error);
+      const msg = data.error || "Erro ao fazer login.";
+      setError(msg);
+      throw new Error(msg);
     }
-    setUser(data);
+    setAccessToken(data.accessToken);
+    setUser(data.user);
   }, []);
 
   const register = useCallback(async (email: string, password: string) => {
@@ -58,23 +92,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error || "Erro ao criar conta.");
-      throw new Error(data.error);
+      const msg = data.error || "Erro ao criar conta.";
+      setError(msg);
+      throw new Error(msg);
     }
-    setUser(data);
+    setAccessToken(data.accessToken);
+    setUser(data.user);
   }, []);
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    setAccessToken(null);
+    setUser(null);
+  }, []);
+
+  const logoutAll = useCallback(async () => {
+    await apiFetch("/api/auth/logout-all", { method: "POST" });
+    setAccessToken(null);
     setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, error, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, isLoading, error, login, register, logout, logoutAll, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -5,6 +5,7 @@ import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import type { FoodStock } from "@shared/schema";
 
 type StockItem = FoodStock & { status: string };
@@ -111,7 +112,7 @@ export default function ShoppingListScreen() {
   const { data: stockItems = [], isLoading } = useQuery<StockItem[]>({
     queryKey: ["food-stock", "status", userId],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${userId}/food-stock/status`);
+      const res = await apiFetch(`/api/users/${userId}/food-stock/status`);
       if (!res.ok) throw new Error("Failed to fetch stock");
       return res.json();
     },
@@ -122,7 +123,7 @@ export default function ShoppingListScreen() {
     mutationFn: async ({ stockItem, actualQuantity }: { stockItem: StockItem; actualQuantity: number }) => {
       const plannedQty = buyQuantities[stockItem.id] ?? defaultBuyQty(stockItem);
 
-      const createRes = await fetch("/api/purchases", {
+      const createRes = await apiFetch("/api/purchases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -137,7 +138,7 @@ export default function ShoppingListScreen() {
       if (!createRes.ok) throw new Error("Failed to create purchase");
       const purchase = await createRes.json();
 
-      const confirmRes = await fetch(`/api/purchases/${purchase.id}/confirm`, {
+      const confirmRes = await apiFetch(`/api/purchases/${purchase.id}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -5,6 +5,7 @@ import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import type { FoodStock } from "@shared/schema";
 
 type StockItem = FoodStock & { status: string };
@@ -30,7 +31,7 @@ export default function PantryScreen() {
   const { data: stockItems = [], isLoading } = useQuery<StockItem[]>({
     queryKey: ["food-stock", "status", userId],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${userId}/food-stock/status`);
+      const res = await apiFetch(`/api/users/${userId}/food-stock/status`);
       if (!res.ok) throw new Error("Failed to fetch stock");
       return res.json();
     },

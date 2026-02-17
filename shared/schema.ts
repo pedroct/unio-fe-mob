@@ -33,11 +33,39 @@ export const users = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    tokenVersion: integer("token_version").notNull().default(0),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
+    lastLoginIp: text("last_login_ip"),
+    lastLoginUserAgent: text("last_login_user_agent"),
   },
   (t) => [
     index("idx_users_updated_at").on(t.updatedAt),
   ]
 );
+
+// ---------------------------------------------------------------------------
+// AUTH SESSIONS (sessões de autenticação)
+// ---------------------------------------------------------------------------
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("idx_auth_sessions_user_id").on(t.userId),
+    index("idx_auth_sessions_token_hash").on(t.tokenHash),
+  ]
+);
+
+export type AuthSession = typeof authSessions.$inferSelect;
 
 // ---------------------------------------------------------------------------
 // DEVICES (dispositivos)

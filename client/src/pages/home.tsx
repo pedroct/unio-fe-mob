@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 
 // Mock Data
 const WEIGHT_DATA = [
@@ -25,7 +26,7 @@ export default function HomeScreen() {
   const { data: hydrationData } = useQuery({
     queryKey: ["hydration", "today", userId],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${userId}/hydration/today`);
+      const res = await apiFetch(`/api/users/${userId}/hydration/today`);
       if (!res.ok) throw new Error("Failed to fetch hydration");
       return res.json() as Promise<{ totalMl: number; goal: number }>;
     },

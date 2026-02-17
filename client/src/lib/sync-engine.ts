@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiFetch } from '@/lib/api';
 
 export interface SyncOperation {
   id?: string;
@@ -64,7 +65,7 @@ export const useSyncEngine = create<SyncState>((set, get) => ({
     set({ isSyncing: true, lastError: null });
 
     try {
-      const response = await fetch('/api/sync/push', {
+      const response = await apiFetch('/api/sync/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,7 +110,7 @@ export const useSyncEngine = create<SyncState>((set, get) => ({
       if (lastCursor) params.set('cursor', lastCursor);
       if (tables) params.set('tables', tables.join(','));
 
-      const response = await fetch(`/api/sync/pull?${params.toString()}`);
+      const response = await apiFetch(`/api/sync/pull?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Sync pull failed: ${response.status}`);
       }

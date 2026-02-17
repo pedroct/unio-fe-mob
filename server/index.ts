@@ -1,10 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
-import session from "express-session";
-import connectPgSimple from "connect-pg-simple";
+import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { pool } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -24,27 +22,7 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
-
-const PgStore = connectPgSimple(session);
-
-app.use(
-  session({
-    store: new PgStore({
-      pool: pool as any,
-      tableName: "sessions",
-      createTableIfMissing: false,
-    }),
-    secret: process.env.SESSION_SECRET || "unio-dev-secret-change-in-prod",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    },
-  }),
-);
+app.use(cookieParser());
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

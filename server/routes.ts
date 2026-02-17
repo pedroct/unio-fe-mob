@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
+import rateLimit from "express-rate-limit";
 import {
   insertUserSchema,
   insertDeviceSchema,
@@ -16,12 +17,20 @@ import {
 } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-
-declare module "express-session" {
-  interface SessionData {
-    userId: string;
-  }
-}
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  createAuthSession,
+  findValidSession,
+  rotateRefreshToken,
+  revokeSession,
+  revokeAllUserSessions,
+  incrementTokenVersion,
+  requireAuth,
+  setRefreshCookie,
+  clearRefreshCookie,
+  getClientIp,
+} from "./auth";
 
 function handleZodError(err: unknown) {
   if (err instanceof ZodError) {
@@ -31,16 +40,45 @@ function handleZodError(err: unknown) {
 }
 
 function sanitizeUser(user: any) {
-  const { passwordHash, ...rest } = user;
+  const { passwordHash, tokenVersion, failedLoginAttempts, lastLoginIp, lastLoginUserAgent, ...rest } = user;
   return rest;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.session.userId) {
-    return res.status(401).json({ error: "Não autenticado." });
-  }
-  next();
+function getUserId(req: Request): string {
+  return (req as any).userId;
 }
+
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => {
+    const ip = getClientIp(req);
+    const email = req.body?.email || "unknown";
+    return `${ip}:${email}`;
+  },
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "Muitas tentativas. Aguarde um momento antes de tentar novamente.",
+      code: "RATE_LIMITED",
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const refreshLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => getClientIp(req),
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "Muitas tentativas de renovação. Aguarde.",
+      code: "RATE_LIMITED",
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export async function registerRoutes(
   httpServer: Server,
@@ -48,7 +86,7 @@ export async function registerRoutes(
 ): Promise<Server> {
 
   // ── Auth ──
-  app.post("/api/auth/register", async (req, res) => {
+  app.post("/api/auth/register", loginLimiter, async (req, res) => {
     try {
       const { email, password, displayName } = req.body;
       if (!email || !password) {
@@ -73,15 +111,28 @@ export async function registerRoutes(
         displayName: displayName || email.split("@")[0],
       });
 
-      req.session.userId = user.id;
-      res.status(201).json(sanitizeUser(user));
+      const ip = getClientIp(req);
+      const userAgent = req.headers["user-agent"] || "";
+
+      await storage.updateUser(user.id, {
+        lastLoginAt: new Date(),
+        lastLoginIp: ip,
+        lastLoginUserAgent: userAgent,
+      } as any);
+
+      const accessToken = generateAccessToken(user.id, 0);
+      const refreshToken = generateRefreshToken();
+      await createAuthSession(user.id, refreshToken, ip, userAgent);
+
+      setRefreshCookie(res, refreshToken);
+      res.status(201).json({ user: sanitizeUser(user), accessToken });
     } catch (err) {
       const { status, body } = handleZodError(err);
       res.status(status).json(body);
     }
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", loginLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
@@ -95,31 +146,99 @@ export async function registerRoutes(
 
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) {
+        await storage.updateUser(user.id, {
+          failedLoginAttempts: (user.failedLoginAttempts || 0) + 1,
+        } as any);
         return res.status(401).json({ error: "E-mail ou senha incorretos." });
       }
 
-      req.session.userId = user.id;
-      res.json(sanitizeUser(user));
+      const ip = getClientIp(req);
+      const userAgent = req.headers["user-agent"] || "";
+
+      await storage.updateUser(user.id, {
+        failedLoginAttempts: 0,
+        lastLoginAt: new Date(),
+        lastLoginIp: ip,
+        lastLoginUserAgent: userAgent,
+      } as any);
+
+      const accessToken = generateAccessToken(user.id, user.tokenVersion);
+      const refreshToken = generateRefreshToken();
+      await createAuthSession(user.id, refreshToken, ip, userAgent);
+
+      setRefreshCookie(res, refreshToken);
+      res.json({ user: sanitizeUser(user), accessToken });
     } catch (err) {
       res.status(500).json({ error: "Erro interno ao fazer login." });
     }
   });
 
-  app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy((err) => {
-      if (err) return res.status(500).json({ error: "Erro ao encerrar sessão." });
-      res.clearCookie("connect.sid");
-      res.json({ ok: true });
-    });
+  app.post("/api/auth/refresh", refreshLimiter, async (req, res) => {
+    try {
+      const refreshToken = req.cookies?.refreshToken;
+      if (!refreshToken) {
+        return res.status(401).json({ error: "Token de atualização ausente.", code: "NO_REFRESH_TOKEN" });
+      }
+
+      const session = await findValidSession(refreshToken);
+      if (!session) {
+        clearRefreshCookie(res);
+        return res.status(401).json({ error: "Sessão inválida ou expirada.", code: "INVALID_SESSION" });
+      }
+
+      const user = await storage.getUser(session.userId);
+      if (!user) {
+        clearRefreshCookie(res);
+        return res.status(401).json({ error: "Usuário não encontrado.", code: "USER_NOT_FOUND" });
+      }
+
+      const ip = getClientIp(req);
+      const userAgent = req.headers["user-agent"] || "";
+      const newRefreshToken = generateRefreshToken();
+
+      await rotateRefreshToken(session, newRefreshToken, ip, userAgent);
+
+      const accessToken = generateAccessToken(user.id, user.tokenVersion);
+      setRefreshCookie(res, newRefreshToken);
+      res.json({ user: sanitizeUser(user), accessToken });
+    } catch (err) {
+      clearRefreshCookie(res);
+      res.status(500).json({ error: "Erro ao renovar sessão." });
+    }
   });
 
-  app.get("/api/auth/me", async (req, res) => {
-    if (!req.session.userId) {
-      return res.status(401).json({ error: "Não autenticado." });
+  app.post("/api/auth/logout", async (req, res) => {
+    try {
+      const refreshToken = req.cookies?.refreshToken;
+      if (refreshToken) {
+        await revokeSession(refreshToken);
+      }
+      clearRefreshCookie(res);
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ error: "Erro ao encerrar sessão." });
     }
-    const user = await storage.getUser(req.session.userId);
+  });
+
+  app.post("/api/auth/logout-all", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      await revokeAllUserSessions(userId);
+      await incrementTokenVersion(userId);
+      const refreshToken = req.cookies?.refreshToken;
+      if (refreshToken) {
+        clearRefreshCookie(res);
+      }
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ error: "Erro ao encerrar todas as sessões." });
+    }
+  });
+
+  app.get("/api/auth/me", requireAuth, async (req, res) => {
+    const userId = getUserId(req);
+    const user = await storage.getUser(userId);
     if (!user) {
-      req.session.destroy(() => {});
       return res.status(401).json({ error: "Usuário não encontrado." });
     }
     res.json(sanitizeUser(user));
@@ -127,7 +246,7 @@ export async function registerRoutes(
 
   // ── Users ──
   app.get("/api/users/:id", requireAuth, async (req, res) => {
-    if (req.params.id !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.id !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     const user = await storage.getUser(req.params.id);
     if (!user) return res.status(404).json({ error: "User not found" });
     res.json(sanitizeUser(user));
@@ -135,7 +254,7 @@ export async function registerRoutes(
 
   app.patch("/api/users/:id", requireAuth, async (req, res) => {
     try {
-      if (req.params.id !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+      if (req.params.id !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
       const data = insertUserSchema.partial().parse(req.body);
       const user = await storage.updateUser(req.params.id, data);
       if (!user) return res.status(404).json({ error: "User not found" });
@@ -147,14 +266,14 @@ export async function registerRoutes(
   });
 
   app.delete("/api/users/:id", requireAuth, async (req, res) => {
-    if (req.params.id !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.id !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     await storage.softDeleteUser(req.params.id);
     res.status(204).end();
   });
 
   // ── Devices ──
   app.get("/api/users/:userId/devices", requireAuth, async (req, res) => {
-    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     const devs = await storage.getDevicesByUser(req.params.userId);
     res.json(devs);
   });
@@ -167,7 +286,7 @@ export async function registerRoutes(
 
   app.post("/api/devices", requireAuth, async (req, res) => {
     try {
-      const data = insertDeviceSchema.parse({ ...req.body, userId: req.session.userId });
+      const data = insertDeviceSchema.parse({ ...req.body, userId: getUserId(req) });
       const d = await storage.createDevice(data);
       res.status(201).json(d);
     } catch (err) {
@@ -183,7 +302,7 @@ export async function registerRoutes(
 
   // ── Body Records ──
   app.get("/api/users/:userId/body-records", requireAuth, async (req, res) => {
-    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     const records = await storage.getBodyRecordsByUser(req.params.userId);
     res.json(records);
   });
@@ -196,7 +315,7 @@ export async function registerRoutes(
 
   app.post("/api/body-records", requireAuth, async (req, res) => {
     try {
-      const data = insertBodyRecordSchema.parse({ ...req.body, userId: req.session.userId });
+      const data = insertBodyRecordSchema.parse({ ...req.body, userId: getUserId(req) });
       const record = await storage.createBodyRecord(data);
       res.status(201).json(record);
     } catch (err) {
@@ -224,14 +343,14 @@ export async function registerRoutes(
 
   // ── Goals ──
   app.get("/api/users/:userId/goals", requireAuth, async (req, res) => {
-    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     const g = await storage.getGoalsByUser(req.params.userId);
     res.json(g);
   });
 
   app.post("/api/goals", requireAuth, async (req, res) => {
     try {
-      const data = insertGoalSchema.parse({ ...req.body, userId: req.session.userId });
+      const data = insertGoalSchema.parse({ ...req.body, userId: getUserId(req) });
       const g = await storage.createGoal(data);
       res.status(201).json(g);
     } catch (err) {
@@ -299,14 +418,14 @@ export async function registerRoutes(
 
   // ── Food Stock ──
   app.get("/api/users/:userId/food-stock", requireAuth, async (req, res) => {
-    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     const stock = await storage.getFoodStockByUser(req.params.userId);
     res.json(stock);
   });
 
   app.post("/api/food-stock", requireAuth, async (req, res) => {
     try {
-      const data = insertFoodStockSchema.parse({ ...req.body, userId: req.session.userId });
+      const data = insertFoodStockSchema.parse({ ...req.body, userId: getUserId(req) });
       const stock = await storage.createFoodStock(data);
       res.status(201).json(stock);
     } catch (err) {
@@ -333,7 +452,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/users/:userId/food-stock/status", requireAuth, async (req, res) => {
-    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     try {
       const items = await storage.getFoodStockWithStatus(req.params.userId);
       res.json(items);
@@ -345,20 +464,20 @@ export async function registerRoutes(
 
   // ── Purchase Records ──
   app.get("/api/users/:userId/purchases/pending", requireAuth, async (req, res) => {
-    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     const purchases = await storage.getPendingPurchasesByUser(req.params.userId);
     res.json(purchases);
   });
 
   app.get("/api/users/:userId/purchases/history", requireAuth, async (req, res) => {
-    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     const purchases = await storage.getPurchaseHistoryByUser(req.params.userId);
     res.json(purchases);
   });
 
   app.post("/api/purchases", requireAuth, async (req, res) => {
     try {
-      const data = insertPurchaseRecordSchema.parse({ ...req.body, userId: req.session.userId });
+      const data = insertPurchaseRecordSchema.parse({ ...req.body, userId: getUserId(req) });
       const purchase = await storage.createPurchaseRecord(data);
       res.status(201).json(purchase);
     } catch (err) {
@@ -381,7 +500,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/users/:userId/purchases/confirm-all", requireAuth, async (req, res) => {
-    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     try {
       const { items } = req.body;
       if (!Array.isArray(items)) {
@@ -396,7 +515,7 @@ export async function registerRoutes(
 
   // ── Hydration Records ──
   app.get("/api/users/:userId/hydration/today", requireAuth, async (req, res) => {
-    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
     try {
       const result = await storage.getHydrationTotalToday(req.params.userId);
       res.json(result);
@@ -408,7 +527,7 @@ export async function registerRoutes(
 
   app.post("/api/hydration", requireAuth, async (req, res) => {
     try {
-      const data = insertHydrationRecordSchema.parse({ ...req.body, userId: req.session.userId });
+      const data = insertHydrationRecordSchema.parse({ ...req.body, userId: getUserId(req) });
       const record = await storage.createHydrationRecord(data);
       res.status(201).json(record);
     } catch (err) {
@@ -474,186 +593,67 @@ const openApiSpec = {
   },
   servers: [{ url: "/api" }],
   paths: {
+    "/auth/login": {
+      post: {
+        operationId: "login",
+        summary: "Authenticate user and receive JWT access + refresh tokens",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", required: ["email", "password"], properties: { email: { type: "string" }, password: { type: "string" } } } } },
+        },
+        responses: {
+          "200": { description: "Login successful", content: { "application/json": { schema: { type: "object", properties: { user: { $ref: "#/components/schemas/User" }, accessToken: { type: "string" } } } } } },
+          "401": { description: "Invalid credentials" },
+          "429": { description: "Rate limited" },
+        },
+      },
+    },
+    "/auth/refresh": {
+      post: {
+        operationId: "refreshToken",
+        summary: "Rotate refresh token and get new access token",
+        responses: {
+          "200": { description: "Tokens rotated", content: { "application/json": { schema: { type: "object", properties: { user: { $ref: "#/components/schemas/User" }, accessToken: { type: "string" } } } } } },
+          "401": { description: "Invalid or expired refresh token" },
+        },
+      },
+    },
+    "/auth/logout": {
+      post: { operationId: "logout", summary: "Revoke current session", responses: { "200": { description: "Session revoked" } } },
+    },
+    "/auth/logout-all": {
+      post: { operationId: "logoutAll", summary: "Revoke all sessions and increment token version", responses: { "200": { description: "All sessions revoked" } } },
+    },
+    "/auth/me": {
+      get: { operationId: "getCurrentUser", summary: "Get authenticated user data", responses: { "200": { description: "User data", content: { "application/json": { schema: { $ref: "#/components/schemas/User" } } } }, "401": { description: "Not authenticated" } } },
+    },
     "/sync/pull": {
       get: {
         operationId: "syncPull",
-        summary: "Pull incremental changes since cursor (deterministic ordering)",
+        summary: "Pull incremental changes since cursor",
         parameters: [
-          { name: "cursor", in: "query", schema: { type: "string", format: "date-time" }, description: "ISO-8601 timestamp cursor from previous pull" },
-          { name: "limit", in: "query", schema: { type: "integer", default: 100, minimum: 1, maximum: 500 }, description: "Max records per table" },
-          { name: "tables", in: "query", schema: { type: "string" }, description: "Comma-separated table names" },
+          { name: "cursor", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 100, minimum: 1, maximum: 500 } },
+          { name: "tables", in: "query", schema: { type: "string" } },
         ],
-        responses: {
-          "200": {
-            description: "Incremental sync response",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/SyncPullResponse" },
-              },
-            },
-          },
-          "400": { description: "Invalid parameters", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-        },
+        responses: { "200": { description: "Sync response", content: { "application/json": { schema: { $ref: "#/components/schemas/SyncPullResponse" } } } } },
       },
     },
     "/sync/push": {
       post: {
         operationId: "syncPush",
-        summary: "Push local changes to server (idempotent)",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/SyncPushRequest" },
-            },
-          },
-        },
-        responses: {
-          "200": {
-            description: "Push result",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/SyncPushResponse" } } },
-          },
-          "400": { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-        },
-      },
-    },
-    "/users": {
-      post: {
-        operationId: "createUser",
-        summary: "Create user",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/InsertUser" } } } },
-        responses: {
-          "201": { description: "Created", content: { "application/json": { schema: { $ref: "#/components/schemas/User" } } } },
-          "400": { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-        },
-      },
-    },
-    "/users/{id}": {
-      get: {
-        operationId: "getUser",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: {
-          "200": { description: "User", content: { "application/json": { schema: { $ref: "#/components/schemas/User" } } } },
-          "404": { description: "Not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-        },
-      },
-      patch: {
-        operationId: "updateUser",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/InsertUser" } } } },
-        responses: {
-          "200": { description: "Updated", content: { "application/json": { schema: { $ref: "#/components/schemas/User" } } } },
-          "404": { description: "Not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-        },
-      },
-      delete: {
-        operationId: "softDeleteUser",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: { "204": { description: "Soft-deleted" } },
-      },
-    },
-    "/devices": {
-      post: {
-        operationId: "createDevice",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/InsertDevice" } } } },
-        responses: { "201": { description: "Created", content: { "application/json": { schema: { $ref: "#/components/schemas/Device" } } } } },
-      },
-    },
-    "/body-records": {
-      post: {
-        operationId: "createBodyRecord",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/InsertBodyRecord" } } } },
-        responses: { "201": { description: "Created", content: { "application/json": { schema: { $ref: "#/components/schemas/BodyRecord" } } } } },
-      },
-    },
-    "/goals": {
-      post: {
-        operationId: "createGoal",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/InsertGoal" } } } },
-        responses: { "201": { description: "Created", content: { "application/json": { schema: { $ref: "#/components/schemas/Goal" } } } } },
-      },
-    },
-    "/foods": {
-      get: {
-        operationId: "listFoods",
-        responses: { "200": { description: "Food list", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Food" } } } } } },
-      },
-      post: {
-        operationId: "createFood",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/InsertFood" } } } },
-        responses: { "201": { description: "Created" } },
-      },
-    },
-    "/food-stock": {
-      post: {
-        operationId: "createFoodStock",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/InsertFoodStock" } } } },
-        responses: { "201": { description: "Created" } },
+        summary: "Push local changes to server",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/SyncPushRequest" } } } },
+        responses: { "200": { description: "Push result", content: { "application/json": { schema: { $ref: "#/components/schemas/SyncPushResponse" } } } } },
       },
     },
   },
   components: {
+    securitySchemes: {
+      bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+    },
     schemas: {
-      Error: {
-        type: "object",
-        properties: { error: { type: "string" } },
-        required: ["error"],
-      },
-      SyncPullResponse: {
-        type: "object",
-        required: ["eventos", "cursor_proximo", "tem_mais", "timestamp"],
-        properties: {
-          eventos: {
-            type: "object",
-            additionalProperties: {
-              type: "object",
-              properties: {
-                created: { type: "array", items: { type: "object" } },
-                updated: { type: "array", items: { type: "object" } },
-                deleted: { type: "array", items: { type: "string", format: "uuid" } },
-              },
-            },
-          },
-          cursor_proximo: { type: "string", format: "date-time", nullable: true },
-          tem_mais: { type: "boolean" },
-          timestamp: { type: "number" },
-        },
-      },
-      SyncPushRequest: {
-        type: "object",
-        required: ["changes"],
-        properties: {
-          changes: {
-            type: "array",
-            items: {
-              type: "object",
-              required: ["table", "action", "data"],
-              properties: {
-                id: { type: "string", format: "uuid" },
-                table: { type: "string", enum: ["users", "devices", "body_records", "goals", "foods", "food_stock"] },
-                action: { type: "string", enum: ["create", "update", "delete"] },
-                data: { type: "object" },
-              },
-            },
-          },
-          clientId: { type: "string" },
-          idempotencyKey: { type: "string" },
-        },
-      },
-      SyncPushResponse: {
-        type: "object",
-        required: ["applied", "errors"],
-        properties: {
-          applied: { type: "integer" },
-          errors: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: { index: { type: "integer" }, error: { type: "string" } },
-            },
-          },
-        },
-      },
+      Error: { type: "object", properties: { error: { type: "string" } }, required: ["error"] },
       User: {
         type: "object",
         properties: {
@@ -665,159 +665,36 @@ const openApiSpec = {
           birthDate: { type: "string", nullable: true },
           sex: { type: "string", nullable: true },
           activityLevel: { type: "string", nullable: true },
+          lastLoginAt: { type: "string", format: "date-time", nullable: true },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
-          deletedAt: { type: "string", format: "date-time", nullable: true },
         },
       },
-      InsertUser: {
+      SyncPullResponse: {
         type: "object",
-        required: ["username"],
+        required: ["eventos", "cursor_proximo", "tem_mais", "timestamp"],
         properties: {
-          username: { type: "string" },
-          displayName: { type: "string" },
-          email: { type: "string" },
-          heightCm: { type: "number" },
-          birthDate: { type: "string" },
-          sex: { type: "string" },
-          activityLevel: { type: "string" },
+          eventos: { type: "object", additionalProperties: { type: "object" } },
+          cursor_proximo: { type: "string", format: "date-time", nullable: true },
+          tem_mais: { type: "boolean" },
+          timestamp: { type: "number" },
         },
       },
-      Device: {
+      SyncPushRequest: {
         type: "object",
+        required: ["changes"],
         properties: {
-          id: { type: "string", format: "uuid" },
-          userId: { type: "string", format: "uuid" },
-          name: { type: "string" },
-          type: { type: "string" },
-          macAddress: { type: "string", nullable: true },
-          manufacturer: { type: "string", nullable: true },
-          model: { type: "string", nullable: true },
-          lastSeenAt: { type: "string", format: "date-time", nullable: true },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-          deletedAt: { type: "string", format: "date-time", nullable: true },
+          changes: { type: "array", items: { type: "object", required: ["table", "action", "data"], properties: { id: { type: "string", format: "uuid" }, table: { type: "string" }, action: { type: "string", enum: ["create", "update", "delete"] }, data: { type: "object" } } } },
+          clientId: { type: "string" },
+          idempotencyKey: { type: "string" },
         },
       },
-      InsertDevice: {
+      SyncPushResponse: {
         type: "object",
-        required: ["userId", "name"],
-        properties: {
-          userId: { type: "string", format: "uuid" },
-          name: { type: "string" },
-          type: { type: "string", default: "scale" },
-          macAddress: { type: "string" },
-          manufacturer: { type: "string" },
-          model: { type: "string" },
-        },
-      },
-      BodyRecord: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          userId: { type: "string", format: "uuid" },
-          deviceId: { type: "string", format: "uuid", nullable: true },
-          weightKg: { type: "number" },
-          fatPercent: { type: "number", nullable: true },
-          muscleMassKg: { type: "number", nullable: true },
-          bmi: { type: "number", nullable: true },
-          impedance: { type: "number", nullable: true },
-          source: { type: "string" },
-          measuredAt: { type: "string", format: "date-time" },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-          deletedAt: { type: "string", format: "date-time", nullable: true },
-        },
-      },
-      InsertBodyRecord: {
-        type: "object",
-        required: ["userId", "weightKg"],
-        properties: {
-          userId: { type: "string", format: "uuid" },
-          deviceId: { type: "string", format: "uuid" },
-          weightKg: { type: "number" },
-          fatPercent: { type: "number" },
-          muscleMassKg: { type: "number" },
-          bmi: { type: "number" },
-          impedance: { type: "number" },
-          source: { type: "string", default: "manual" },
-          measuredAt: { type: "string", format: "date-time" },
-        },
-      },
-      Goal: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          userId: { type: "string", format: "uuid" },
-          type: { type: "string" },
-          targetValue: { type: "number" },
-          currentValue: { type: "number", nullable: true },
-          unit: { type: "string" },
-          startDate: { type: "string", format: "date-time" },
-          endDate: { type: "string", format: "date-time", nullable: true },
-          status: { type: "string" },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-          deletedAt: { type: "string", format: "date-time", nullable: true },
-        },
-      },
-      InsertGoal: {
-        type: "object",
-        required: ["userId", "type", "targetValue"],
-        properties: {
-          userId: { type: "string", format: "uuid" },
-          type: { type: "string" },
-          targetValue: { type: "number" },
-          unit: { type: "string", default: "kg" },
-          endDate: { type: "string", format: "date-time" },
-        },
-      },
-      Food: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          name: { type: "string" },
-          brand: { type: "string", nullable: true },
-          barcode: { type: "string", nullable: true },
-          servingSizeG: { type: "number" },
-          caloriesKcal: { type: "number" },
-          proteinG: { type: "number" },
-          carbsG: { type: "number" },
-          fatG: { type: "number" },
-          fiberG: { type: "number", nullable: true },
-          sodiumMg: { type: "number", nullable: true },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-          deletedAt: { type: "string", format: "date-time", nullable: true },
-        },
-      },
-      InsertFood: {
-        type: "object",
-        required: ["name"],
-        properties: {
-          name: { type: "string" },
-          brand: { type: "string" },
-          barcode: { type: "string" },
-          servingSizeG: { type: "number" },
-          caloriesKcal: { type: "number" },
-          proteinG: { type: "number" },
-          carbsG: { type: "number" },
-          fatG: { type: "number" },
-          fiberG: { type: "number" },
-          sodiumMg: { type: "number" },
-        },
-      },
-      InsertFoodStock: {
-        type: "object",
-        required: ["userId", "foodId"],
-        properties: {
-          userId: { type: "string", format: "uuid" },
-          foodId: { type: "string", format: "uuid" },
-          quantityG: { type: "number" },
-          location: { type: "string" },
-          expiresAt: { type: "string", format: "date-time" },
-        },
+        required: ["applied", "errors"],
+        properties: { applied: { type: "integer" }, errors: { type: "array", items: { type: "object", properties: { index: { type: "integer" }, error: { type: "string" } } } } },
       },
     },
   },
+  security: [{ bearerAuth: [] }],
 };

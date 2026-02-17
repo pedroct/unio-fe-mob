@@ -5,6 +5,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 
 const BEVERAGE_TYPES = [
   { id: "water", label: "Água", icon: GlassWater, color: "#3D7A8C" },
@@ -31,7 +32,7 @@ export default function HydrationScreen() {
   const { data: hydrationData, isLoading } = useQuery({
     queryKey: ["hydration", "today", userId],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${userId}/hydration/today`);
+      const res = await apiFetch(`/api/users/${userId}/hydration/today`);
       if (!res.ok) throw new Error("Failed to fetch hydration data");
       return res.json() as Promise<{
         totalMl: number;
@@ -51,7 +52,7 @@ export default function HydrationScreen() {
 
   const addMutation = useMutation({
     mutationFn: async (payload: { amountMl: number; beverageType: string; label: string }) => {
-      const res = await fetch("/api/hydration", {
+      const res = await apiFetch("/api/hydration", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

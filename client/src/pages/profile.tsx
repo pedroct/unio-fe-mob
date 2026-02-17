@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { useMutation } from "@tanstack/react-query";
 
 export default function ProfileScreen() {
@@ -37,7 +38,7 @@ export default function ProfileScreen() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: Record<string, any>) => {
-      const res = await fetch(`/api/users/${user!.id}`, {
+      const res = await apiFetch(`/api/users/${user!.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
