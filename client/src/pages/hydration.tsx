@@ -194,7 +194,7 @@ export default function HydrationScreen() {
               <motion.div 
                 initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 z-50 max-w-[430px] mx-auto pb-10"
+                className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 z-50 max-w-[430px] mx-auto pb-12"
               >
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="font-display text-xl font-semibold text-[#2F5641]">Registro Manual</h2>
@@ -264,12 +264,14 @@ export default function HydrationScreen() {
                   </div>
                 </div>
 
-                <button 
-                  onClick={handleManualSubmit}
-                  className="w-full bg-[#2F5641] text-white py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-[#2F5641]/20 active:scale-[0.98] transition-all"
-                >
-                  Confirmar Registro
-                </button>
+                <div className="mb-8">
+                  <button 
+                    onClick={handleManualSubmit}
+                    className="w-full bg-[#2F5641] text-white py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-[#2F5641]/20 active:scale-[0.98] transition-all"
+                  >
+                    Confirmar Registro
+                  </button>
+                </div>
               </motion.div>
             </>
           )}
