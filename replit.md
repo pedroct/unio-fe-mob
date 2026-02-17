@@ -57,6 +57,16 @@ All endpoints are served by `https://staging.unio.tec.br` and proxied through th
 - `GET /api/biometria/estado-atual` — JWT required, latest reading + peso atual + variações 7d/30d
 - `GET /api/biometria/historico?dias=30` — JWT required, historical weight/fat/bmi data points
 
+#### Hidratação
+- `GET /api/hidratacao/meta` — JWT required, daily goal `{ml_meta_diaria, atualizado_em}`
+- `PATCH /api/hidratacao/meta` — Update daily goal `{ml_meta_diaria}` → returns updated meta
+- `POST /api/hidratacao/registros` — Create intake `{quantidade_ml, tipo_bebida, registrado_em?}` → returns `{id, resumo_dia}` (id is integer)
+- `GET /api/hidratacao/registros?inicio=&fim=` — List intake records (default: today)
+- `DELETE /api/hidratacao/registros/{registro_id}` — Remove intake → returns `{resumo_dia}`
+- `GET /api/hidratacao/resumo?data=YYYY-MM-DD` — Daily summary `{consumido_ml, meta_ml, restante_ml, percentual, atingiu_meta}`
+- Valid beverage types: `AGUA`, `SUCO`, `CAFE`, `CHA`, `LEITE`, `ISOTONICO`, `OUTRO`
+- Errors: 422 `{errors: [{field, message}]}`, 403 access denied, 404 not found
+
 #### Suplementação
 - `GET /api/nutricao/suplementacao/protocolos` — List supplement protocols
 - `POST /api/nutricao/suplementacao/protocolos` — Create protocol

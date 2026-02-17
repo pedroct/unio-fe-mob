@@ -1,11 +1,12 @@
 import Layout from "@/components/layout";
-import { ChevronLeft, Plus, History, Settings, Coffee, GlassWater, Wine, X, Calendar, Clock, Mic, Delete, Trash2, Loader2, AlertCircle, Droplets } from "lucide-react";
+import { ChevronLeft, Plus, History, Settings, Coffee, GlassWater, Wine, X, Mic, Delete, Trash2, Loader2, AlertCircle, Droplets } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 const BEVERAGE_TYPES = [
   { id: "AGUA", label: "Água", icon: GlassWater, color: "#3D7A8C" },
@@ -27,24 +28,60 @@ interface ResumoData {
 }
 
 interface RegistroItem {
-  id: string;
+  id: number;
   quantidade_ml: number;
   tipo_bebida: string;
   registrado_em: string;
+}
+
+interface ApiError422 {
+  errors: { field: string; message: string }[];
+}
+
+interface AddRegistroResponse {
+  id: number;
+  quantidade_ml: number;
+  tipo_bebida: string;
+  registrado_em: string;
+  resumo_dia: ResumoData;
+  mensagem: string;
+}
+
+interface DeleteRegistroResponse {
+  id: number;
+  removido: boolean;
+  resumo_dia: ResumoData;
+  mensagem: string;
+}
+
+function isApiError422(err: unknown): err is ApiError422 {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "errors" in err &&
+    Array.isArray((err as ApiError422).errors)
+  );
 }
 
 export default function HydrationScreen() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [showManualInput, setShowManualInput] = useState(false);
   const [showMetaEdit, setShowMetaEdit] = useState(false);
   const [manualAmount, setManualAmount] = useState("250");
   const [manualType, setManualType] = useState("AGUA");
   const [newMeta, setNewMeta] = useState("");
+  const [metaError, setMetaError] = useState("");
+  const [addError, setAddError] = useState("");
 
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  const updateResumoCache = (resumo_dia: ResumoData) => {
+    queryClient.setQueryData(["hydration", "resumo", today], resumo_dia);
+  };
 
   const { data: resumo, isLoading: loadingResumo, isError: errorResumo, refetch: refetchResumo } = useQuery<ResumoData>({
     queryKey: ["hydration", "resumo", today],
@@ -76,12 +113,8 @@ export default function HydrationScreen() {
     enabled: !!user,
   });
 
-  const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: ["hydration"] });
-  };
-
-  const addMutation = useMutation({
-    mutationFn: async (payload: { quantidade_ml: number; tipo_bebida: string }) => {
+  const addMutation = useMutation<AddRegistroResponse, unknown, { quantidade_ml: number; tipo_bebida: string }>({
+    mutationFn: async (payload) => {
       const res = await apiFetch("/api/hidratacao/registros", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -93,16 +126,66 @@ export default function HydrationScreen() {
       }
       return res.json();
     },
-    onSuccess: () => invalidateAll(),
+    onSuccess: (data) => {
+      setAddError("");
+      updateResumoCache(data.resumo_dia);
+      queryClient.setQueryData<{ itens: RegistroItem[]; total_itens: number }>(
+        ["hydration", "registros", today],
+        (old) => {
+          const newItem: RegistroItem = {
+            id: data.id,
+            quantidade_ml: data.quantidade_ml,
+            tipo_bebida: data.tipo_bebida,
+            registrado_em: data.registrado_em,
+          };
+          if (!old) return { itens: [newItem], total_itens: 1 };
+          return { itens: [newItem, ...old.itens], total_itens: old.total_itens + 1 };
+        }
+      );
+    },
+    onError: (err) => {
+      if (isApiError422(err)) {
+        const msg = err.errors.map((e) => e.message).join("; ");
+        setAddError(msg);
+        toast({ title: "Erro de validação", description: msg, variant: "destructive" });
+      } else {
+        toast({ title: "Erro", description: "Não foi possível registrar. Tente novamente.", variant: "destructive" });
+      }
+    },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
+  const deleteMutation = useMutation<DeleteRegistroResponse, unknown, number>({
+    mutationFn: async (id) => {
       const res = await apiFetch(`/api/hidratacao/registros/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Erro ao remover");
+      if (!res.ok) {
+        const err = await res.json();
+        throw { status: res.status, ...err };
+      }
       return res.json();
     },
-    onSuccess: () => invalidateAll(),
+    onSuccess: (data) => {
+      updateResumoCache(data.resumo_dia);
+      queryClient.setQueryData<{ itens: RegistroItem[]; total_itens: number }>(
+        ["hydration", "registros", today],
+        (old) => {
+          if (!old) return { itens: [], total_itens: 0 };
+          return {
+            itens: old.itens.filter((i) => i.id !== data.id),
+            total_itens: Math.max(0, old.total_itens - 1),
+          };
+        }
+      );
+    },
+    onError: (err: any) => {
+      if (err?.status === 403) {
+        toast({ title: "Acesso negado", description: "Você não tem permissão para remover este registro.", variant: "destructive" });
+      } else if (err?.status === 404) {
+        toast({ title: "Não encontrado", description: "Este registro já foi removido.", variant: "destructive" });
+        queryClient.invalidateQueries({ queryKey: ["hydration", "registros", today] });
+      } else {
+        toast({ title: "Erro", description: "Não foi possível remover. Tente novamente.", variant: "destructive" });
+      }
+    },
   });
 
   const metaMutation = useMutation({
@@ -118,9 +201,19 @@ export default function HydrationScreen() {
       }
       return res.json();
     },
-    onSuccess: () => {
-      invalidateAll();
+    onSuccess: (data) => {
+      setMetaError("");
+      queryClient.setQueryData(["hydration", "meta"], { ml_meta_diaria: data.ml_meta_diaria, atualizado_em: data.atualizado_em });
+      queryClient.invalidateQueries({ queryKey: ["hydration", "resumo"] });
       setShowMetaEdit(false);
+    },
+    onError: (err) => {
+      if (isApiError422(err)) {
+        const msg = err.errors.map((e) => e.message).join("; ");
+        setMetaError(msg);
+      } else {
+        setMetaError("Erro ao salvar meta. Tente novamente.");
+      }
     },
   });
 
@@ -129,20 +222,28 @@ export default function HydrationScreen() {
   const percentage = goal > 0 ? Math.min((intake / goal) * 100, 100) : 0;
 
   const addWater = (amount: number, type: string = "AGUA") => {
+    setAddError("");
     addMutation.mutate({ quantidade_ml: amount, tipo_bebida: type });
   };
 
   const handleManualSubmit = () => {
     const amount = parseInt(manualAmount);
-    if (isNaN(amount) || amount <= 0) return;
+    if (isNaN(amount) || amount <= 0) {
+      setAddError("Quantidade deve ser maior que zero.");
+      return;
+    }
     addWater(amount, manualType);
     setShowManualInput(false);
     setManualAmount("250");
   };
 
   const handleMetaSubmit = () => {
+    setMetaError("");
     const val = parseInt(newMeta);
-    if (isNaN(val) || val < 500 || val > 10000) return;
+    if (isNaN(val) || val < 500 || val > 10000) {
+      setMetaError("Meta deve ser entre 500ml e 10.000ml.");
+      return;
+    }
     metaMutation.mutate(val);
   };
 
@@ -178,7 +279,7 @@ export default function HydrationScreen() {
             <ChevronLeft size={24} />
           </button>
           <h1 className="font-display text-lg font-semibold text-[#2F5641]">Hidratação</h1>
-          <button onClick={() => { setNewMeta(String(goal)); setShowMetaEdit(true); }} className="w-10 h-10 flex items-center justify-center text-[#2F5641]" data-testid="button-edit-meta">
+          <button onClick={() => { setMetaError(""); setNewMeta(String(goal)); setShowMetaEdit(true); }} className="w-10 h-10 flex items-center justify-center text-[#2F5641]" data-testid="button-edit-meta">
             <Settings size={20} />
           </button>
         </header>
@@ -238,7 +339,7 @@ export default function HydrationScreen() {
                   ))}
                   <button
                     data-testid="button-add-custom"
-                    onClick={() => setShowManualInput(true)}
+                    onClick={() => { setAddError(""); setShowManualInput(true); }}
                     className="flex flex-col items-center gap-2 p-3 bg-[#2F5641] rounded-2xl shadow-lg shadow-[#2F5641]/20 active:scale-95 transition-all group"
                   >
                     <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white">
@@ -321,6 +422,9 @@ export default function HydrationScreen() {
                   <p className="text-[#8B9286] font-medium mt-1">
                     {getTypeInfo(manualType).label}
                   </p>
+                  {addError && (
+                    <p className="text-xs text-[#BE4E35] mt-2" data-testid="text-add-error">{addError}</p>
+                  )}
                 </div>
 
                 <div className="w-full relative h-[140px] overflow-hidden mb-4 shrink-0">
@@ -387,14 +491,18 @@ export default function HydrationScreen() {
                   <input
                     type="number"
                     value={newMeta}
-                    onChange={(e) => setNewMeta(e.target.value)}
+                    onChange={(e) => { setNewMeta(e.target.value); setMetaError(""); }}
                     placeholder="Ex.: 2500"
                     min={500}
                     max={10000}
-                    className="w-full bg-white border border-[#E8EBE5] rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641]"
+                    className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${metaError ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
                     data-testid="input-meta"
                   />
-                  <p className="text-[10px] text-[#8B9286] mt-1">Mínimo 500ml, máximo 10.000ml.</p>
+                  {metaError ? (
+                    <p className="text-[10px] text-[#BE4E35] mt-1" data-testid="text-meta-error">{metaError}</p>
+                  ) : (
+                    <p className="text-[10px] text-[#8B9286] mt-1">Mínimo 500ml, máximo 10.000ml.</p>
+                  )}
                 </div>
                 <div className="flex flex-col gap-3">
                   <button

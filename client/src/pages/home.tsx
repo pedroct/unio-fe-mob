@@ -34,7 +34,7 @@ export default function HomeScreen() {
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-  const { data: hydrationData } = useQuery<{ consumido_ml: number; meta_ml: number; restante_ml: number; percentual: number; atingiu_meta: boolean }>({
+  const { data: hydrationData, isError: hydrationError } = useQuery<{ consumido_ml: number; meta_ml: number; restante_ml: number; percentual: number; atingiu_meta: boolean }>({
     queryKey: ["hydration", "resumo", today],
     queryFn: async () => {
       const res = await apiFetch(`/api/hidratacao/resumo?data=${today}`);
@@ -42,6 +42,7 @@ export default function HomeScreen() {
       return res.json();
     },
     enabled: !!userId,
+    retry: 1,
   });
 
   const { data: estadoBio } = useQuery<{
@@ -386,12 +387,18 @@ export default function HomeScreen() {
                <Droplets size={18} className="fill-current" />
                <h2 className="text-xs font-bold uppercase tracking-wide">Hidratação</h2>
              </div>
-             <p data-testid="text-hydration-card" className="text-2xl font-display mb-1">{hydrationL} <span className="text-sm opacity-70">/ {hydrationGoalL} L</span></p>
-             <div className="flex gap-1 mt-2">
-               {[1, 2, 3, 4, 5].map(i => (
-                 <div key={i} className={`w-3 h-3 rounded-full border border-white ${i <= hydrationDots ? "bg-white" : "bg-transparent"}`} />
-               ))}
-             </div>
+             {hydrationError ? (
+               <p data-testid="text-hydration-card" className="text-lg font-display mb-1 opacity-70">Toque para ver</p>
+             ) : (
+               <>
+                 <p data-testid="text-hydration-card" className="text-2xl font-display mb-1">{hydrationL} <span className="text-sm opacity-70">/ {hydrationGoalL} L</span></p>
+                 <div className="flex gap-1 mt-2">
+                   {[1, 2, 3, 4, 5].map(i => (
+                     <div key={i} className={`w-3 h-3 rounded-full border border-white ${i <= hydrationDots ? "bg-white" : "bg-transparent"}`} />
+                   ))}
+                 </div>
+               </>
+             )}
            </div>
 
            <button
