@@ -18,6 +18,7 @@ export default function PantryScreen() {
   const [filter, setFilter] = useState("Todos");
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
+  const hasMoved = useRef(false);
   const startX = useRef(0);
   const scrollLeft = useRef(0);
 
@@ -25,6 +26,7 @@ export default function PantryScreen() {
     const el = scrollRef.current;
     if (!el) return;
     isDragging.current = true;
+    hasMoved.current = false;
     startX.current = e.clientX;
     scrollLeft.current = el.scrollLeft;
     el.setPointerCapture(e.pointerId);
@@ -33,12 +35,17 @@ export default function PantryScreen() {
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging.current || !scrollRef.current) return;
     const dx = e.clientX - startX.current;
+    if (Math.abs(dx) > 5) hasMoved.current = true;
     scrollRef.current.scrollLeft = scrollLeft.current - dx;
   }, []);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     isDragging.current = false;
     scrollRef.current?.releasePointerCapture(e.pointerId);
+  }, []);
+
+  const handleChipClick = useCallback((cat: string) => {
+    if (!hasMoved.current) setFilter(cat);
   }, []);
 
   const getStatusColor = (status: string) => {
@@ -112,7 +119,7 @@ export default function PantryScreen() {
             {["Todos", "Proteínas", "Grãos", "Suplementos", "Gorduras"].map((cat, i, arr) => (
               <button
                 key={cat}
-                onClick={() => setFilter(cat)}
+                onClick={() => handleChipClick(cat)}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors shrink-0 ${
                   filter === cat 
                     ? "bg-[#2F5641] text-white" 
