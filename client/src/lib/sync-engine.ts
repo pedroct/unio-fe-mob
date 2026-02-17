@@ -1,83 +1,134 @@
 import { create } from 'zustand';
-import { v4 as uuidv4 } from 'uuid';
-
-// ----------------------------------------------------------------------------
-// Types & Interfaces
-// Matching the proposed Schema: body_records, meal_logs, etc.
-// ----------------------------------------------------------------------------
 
 export interface SyncOperation {
-  id: string; // UUID
+  id?: string;
   table: string;
   action: 'create' | 'update' | 'delete';
-  data: any;
+  data: Record<string, any>;
   createdAt: number;
+}
+
+interface SyncPullResponse {
+  changes: Record<string, { created: any[]; updated: any[]; deleted: string[] }>;
+  timestamp: number;
+}
+
+interface SyncPushResponse {
+  applied: number;
+  errors: Array<{ index: number; error: string }>;
 }
 
 interface SyncState {
   pendingChanges: SyncOperation[];
   lastPulledAt: number | null;
   isSyncing: boolean;
-  
-  // Actions
-  pushChange: (table: string, action: 'create' | 'update' | 'delete', data: any) => void;
-  sync: () => Promise<void>;
-  generateUUID: () => string;
-}
+  lastError: string | null;
 
-// ----------------------------------------------------------------------------
-// Mock Sync Engine (Zustand Store)
-// Simulates the WatermelonDB Sync behavior
-// ----------------------------------------------------------------------------
+  pushChange: (table: string, action: 'create' | 'update' | 'delete', data: Record<string, any>, id?: string) => void;
+  sync: () => Promise<SyncPushResponse | null>;
+  pull: (tables?: string[]) => Promise<SyncPullResponse | null>;
+  clearError: () => void;
+}
 
 export const useSyncEngine = create<SyncState>((set, get) => ({
   pendingChanges: [],
   lastPulledAt: null,
   isSyncing: false,
+  lastError: null,
 
-  generateUUID: () => uuidv4(),
-
-  pushChange: (table, action, data) => {
+  pushChange: (table, action, data, id) => {
     const change: SyncOperation = {
-      id: get().generateUUID(),
+      id,
       table,
       action,
-      data: {
-        ...data,
-        _id: data.id || get().generateUUID(), // Ensure UUID
-        _status: action === 'create' ? 'created' : 'updated', // WatermelonDB style
-        _changed: '',
-      },
+      data,
       createdAt: Date.now(),
     };
 
-    console.log(`[SyncEngine] Queued change: ${action} on ${table}`, change);
+    console.log(`[SyncEngine] Queued: ${action} on ${table}`, change);
 
     set((state) => ({
       pendingChanges: [...state.pendingChanges, change],
+      lastError: null,
     }));
 
-    // Auto-trigger sync attempt (optimistic)
     get().sync();
   },
 
   sync: async () => {
-    const { isSyncing, pendingChanges, lastPulledAt } = get();
-    if (isSyncing || pendingChanges.length === 0) return;
+    const { isSyncing, pendingChanges } = get();
+    if (isSyncing || pendingChanges.length === 0) return null;
 
-    set({ isSyncing: true });
+    set({ isSyncing: true, lastError: null });
 
-    // Simulate Network Latency
-    console.log('[SyncEngine] Pushing changes to backend...');
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch('/api/sync/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          changes: pendingChanges.map((c) => ({
+            id: c.id,
+            table: c.table,
+            action: c.action,
+            data: c.data,
+          })),
+        }),
+      });
 
-    // Simulate Server Response
-    console.log('[SyncEngine] Sync success! Changes committed.');
-    
-    set({
-      isSyncing: false,
-      pendingChanges: [], // Clear queue
-      lastPulledAt: Date.now(),
-    });
-  }
+      if (!response.ok) {
+        throw new Error(`Sync push failed: ${response.status}`);
+      }
+
+      const result: SyncPushResponse = await response.json();
+
+      console.log(`[SyncEngine] Push complete: ${result.applied} applied, ${result.errors.length} errors`);
+
+      set({
+        isSyncing: false,
+        pendingChanges: [],
+        lastPulledAt: Date.now(),
+      });
+
+      return result;
+    } catch (err: any) {
+      console.error('[SyncEngine] Push error:', err);
+      set({ isSyncing: false, lastError: err.message });
+      return null;
+    }
+  },
+
+  pull: async (tables) => {
+    const { isSyncing, lastPulledAt } = get();
+    if (isSyncing) return null;
+
+    set({ isSyncing: true, lastError: null });
+
+    try {
+      const params = new URLSearchParams();
+      if (lastPulledAt) params.set('last_pulled_at', String(lastPulledAt));
+      if (tables) params.set('tables', tables.join(','));
+
+      const response = await fetch(`/api/sync/pull?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Sync pull failed: ${response.status}`);
+      }
+
+      const result: SyncPullResponse = await response.json();
+
+      console.log('[SyncEngine] Pull complete:', result);
+
+      set({
+        isSyncing: false,
+        lastPulledAt: result.timestamp,
+      });
+
+      return result;
+    } catch (err: any) {
+      console.error('[SyncEngine] Pull error:', err);
+      set({ isSyncing: false, lastError: err.message });
+      return null;
+    }
+  },
+
+  clearError: () => set({ lastError: null }),
 }));

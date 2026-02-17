@@ -242,7 +242,7 @@ export class DatabaseStorage implements IStorage {
 
         switch (change.action) {
           case "create": {
-            const insertData = { ...change.data };
+            const insertData = this.coerceDates({ ...change.data });
             if (change.id) insertData.id = change.id;
             delete insertData._status;
             delete insertData._changed;
@@ -253,7 +253,7 @@ export class DatabaseStorage implements IStorage {
             break;
           }
           case "update": {
-            const updateData: Record<string, any> = { ...change.data, updatedAt: new Date() };
+            const updateData: Record<string, any> = this.coerceDates({ ...change.data, updatedAt: new Date() });
             delete updateData.id;
             delete updateData._status;
             delete updateData._changed;
@@ -287,6 +287,16 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { applied, errors };
+  }
+
+  private coerceDates(data: Record<string, any>): Record<string, any> {
+    const DATE_FIELDS = ["createdAt", "updatedAt", "measuredAt", "expiresAt", "syncedAt"];
+    for (const key of DATE_FIELDS) {
+      if (key in data && typeof data[key] === "string") {
+        data[key] = new Date(data[key]);
+      }
+    }
+    return data;
   }
 
   private async logSync(tableName: string, recordId: string, action: string, payload: any): Promise<void> {
