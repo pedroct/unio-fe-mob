@@ -95,7 +95,7 @@ export default function HomeScreen() {
   const totalCarbs = Math.round(mealSummary?.consumido?.carboidratos ?? 0);
   const totalFat = Math.round(mealSummary?.consumido?.gorduras ?? 0);
   const metaCal = mealSummary?.meta?.calorias ?? DEFAULT_GOALS.kcal;
-  const calRemaining = Math.max(0, mealSummary?.saldo?.calorias ?? (metaCal - totalCal));
+  const calRemaining = Math.round(Math.max(0, mealSummary?.saldo?.calorias ?? (metaCal - totalCal)));
   const calProgress = Math.min(1, (mealSummary?.percentual_meta?.calorias ?? (metaCal > 0 ? (totalCal / metaCal) * 100 : 0)) / 100);
   const mealCount = mealSummary?.total_registros ?? 0;
 
