@@ -194,7 +194,7 @@ export default function HydrationScreen() {
               <motion.div 
                 initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 z-50 max-w-[430px] mx-auto pb-12"
+                className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 z-50 max-w-[430px] mx-auto pb-32"
               >
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="font-display text-xl font-semibold text-[#2F5641]">Registro Manual</h2>
