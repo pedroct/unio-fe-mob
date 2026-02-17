@@ -22,6 +22,7 @@ import TrainingPlayerScreen from "@/pages/training/player";
 import SupplementsScreen from "@/pages/supplements";
 import PantryScreen from "@/pages/pantry";
 import HydrationScreen from "@/pages/hydration";
+import ProfileScreen from "@/pages/profile";
 import { useState } from "react";
 
 function Router() {
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/onboarding" component={OnboardingScreen} />
       <Route path="/welcome" component={WelcomeScreen} />
       <Route path="/home" component={HomeScreen} />
+      <Route path="/profile" component={ProfileScreen} />
       
       {/* Nutrition Module */}
       <Route path="/nutrition" component={NutritionScreen} />

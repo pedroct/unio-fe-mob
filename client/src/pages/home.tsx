@@ -24,10 +24,16 @@ export default function HomeScreen() {
       <header className="px-6 pt-14 pb-28 bg-gradient-to-b from-[#FAFBF8] to-[#F5F3EE]">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#E8EBE5] overflow-hidden">
+            <div 
+              onClick={() => setLocation("/profile")}
+              className="w-10 h-10 rounded-full bg-[#E8EBE5] overflow-hidden cursor-pointer active:scale-95 transition-transform"
+            >
                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Pedro" alt="User" />
             </div>
-            <div>
+            <div 
+              onClick={() => setLocation("/profile")}
+              className="cursor-pointer"
+            >
               <p className="text-xs text-[#8B9286] font-medium uppercase tracking-wider">Bom dia,</p>
               <h1 className="font-display text-xl text-[#2F5641]">Pedro</h1>
             </div>

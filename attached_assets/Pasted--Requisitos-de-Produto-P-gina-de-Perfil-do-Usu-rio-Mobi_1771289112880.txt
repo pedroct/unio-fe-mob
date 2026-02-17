@@ -1,0 +1,315 @@
+# Requisitos de Produto — Página de Perfil do Usuário (Mobile)
+
+Projeto: UNIO Performance OS  
+Módulo: Perfil do Usuário (Mobile)  
+Versão: 1.0  
+Data: 16 de Fevereiro de 2026  
+Status: Pronto para UX/UI + Frontend
+
+---
+
+## 1. Objetivo
+
+Definir os requisitos para implementação da página de Perfil do usuário no app mobile, incluindo:
+
+1. Estrutura de navegação da página;
+2. Funcionalidades do MVP;
+3. Contratos de API com backend atual;
+4. Regras de UX Writing obrigatórias para copy e microcopy.
+
+---
+
+## 2. Escopo do MVP
+
+### 2.1 Incluído
+
+- Visualizar dados básicos da conta;
+- Editar nome e sobrenome do usuário;
+- Visualizar e editar dados do perfil:
+  tipo
+  altura
+  data de nascimento
+  sexo
+  foto
+  Nível de atividade:
+    Sendetário
+    Atividade leve
+    Atividade moderada
+    Muito ativo
+  Para hiadratação:
+    (clima: Calor, Temprado, Frio)
+    Meta de ingestão de água
+  Ajustar metas com as calorias queimadas?
+  Meus objetivos
+    Meta de passos
+    Meta de consumo diário de Kcal
+    Meta diária de queima de gordura
+    Meta diária de ficar em pé
+    Meta diária de sono
+    Meta de Peso
+    Meta semanal
+- Gerenciar dispositivos de biometria (listar, vincular, desvincular);
+- Acessar meta biométrica ativa (visualizar, criar e atualizar);
+- Listar profissionais vinculados.
+
+### 2.2 Fora de escopo neste ciclo
+
+- Exclusão de conta;
+- Gestão avançada de preferências (tema, idioma, notificações granulares);
+- Tela de gamificação/conquistas.
+
+---
+
+## 3. Estrutura de informação da página de Perfil
+
+A página deve ser organizada em blocos:
+
+1. **Conta**
+   - E-mail (somente leitura)
+   - Nome
+   - Sobrenome
+
+2. **Dados Pessoais e Biométricos**
+   - Tipo de perfil
+   - Altura (cm)
+   - Data de nascimento
+   - Sexo
+   - Foto (URL)
+
+3. **Dispositivos**
+   - Lista de dispositivos vinculados
+   - Vincular novo dispositivo
+   - Desvincular dispositivo
+
+4. **Meta Biométrica**
+   - Visualizar meta ativa
+   - Criar meta
+   - Atualizar meta
+
+5. **Profissionais Vinculados**
+   - Lista de profissionais
+   - (futuro) desvincular pela UI principal do perfil
+
+---
+
+## 4. Requisitos funcionais
+
+### RF-PERFIL-001 — Visualizar dados da conta
+
+O app deve exibir os dados retornados de usuário autenticado.
+
+### RF-PERFIL-002 — Editar dados da conta
+
+O app deve permitir atualizar `first_name` e `last_name`.
+
+### RF-PERFIL-003 — Visualizar perfil estendido
+
+O app deve exibir os campos do perfil do usuário autenticado.
+
+### RF-PERFIL-004 — Editar perfil estendido
+
+O app deve permitir atualizar campos de perfil com validação básica no cliente.
+
+### RF-PERFIL-005 — Gerenciar dispositivos
+
+O app deve permitir listar, vincular e desvincular dispositivos biométricos.
+
+### RF-PERFIL-006 — Gerenciar meta biométrica
+
+O app deve permitir visualizar meta ativa e criar/atualizar meta.
+
+### RF-PERFIL-007 — Listar profissionais vinculados
+
+O app deve exibir lista de profissionais vinculados ao usuário (perfil paciente).
+
+### RF-PERFIL-008 — Estados de interface
+
+Cada bloco de Perfil deve contemplar:
+- carregando;
+- sucesso;
+- vazio;
+- erro.
+
+---
+
+## 5. Contratos de API (backend atual)
+
+Base path: `/api`
+
+### 5.1 Usuário e perfil (Núcleo)
+
+- **GET** `/nucleo/eu` (JWT)
+- **PATCH** `/nucleo/eu` (JWT)
+- **GET** `/nucleo/perfil` (JWT)
+- **PATCH** `/nucleo/perfil` (JWT)
+- **GET** `/nucleo/meus-profissionais` (JWT)
+
+### 5.2 Dispositivos e metas (Biometria)
+
+- **GET** `/biometria/dispositivos` (JWT)
+- **POST** `/biometria/dispositivos` (JWT)
+- **DELETE** `/biometria/dispositivos/{dispositivo_id}` (JWT)
+- **GET** `/biometria/meta` (JWT)
+- **POST** `/biometria/meta` (JWT)
+- **PATCH** `/biometria/meta/{meta_id}` (JWT)
+
+---
+
+## 6. Requisitos de validação de formulário (MVP)
+
+### 6.1 Conta
+
+- Nome: obrigatório para salvar alterações (quando campo presente no fluxo);
+- Sobrenome: opcional.
+
+### 6.2 Perfil
+
+- Altura: inteiro positivo (cm);
+- Data de nascimento: data válida e não futura;
+- Sexo: valores suportados pelo backend (`M` ou `F`);
+- MAC da balança: formato `AA:BB:CC:DD:EE:FF`.
+
+### 6.3 Dispositivo
+
+- Nome: obrigatório;
+- Tipo: obrigatório (MVP Xiaomi: `MISCALE2`);
+- MAC: obrigatório para vínculo Xiaomi.
+
+---
+
+## 7. Diretrizes obrigatórias de UX Writing
+
+Todas as telas, mensagens e microcopy da página de Perfil devem seguir [docs/especificacoes/diretrizes_ux_writing_unio.md](docs/especificacoes/diretrizes_ux_writing_unio.md).
+
+### 7.1 Regras mandatórias
+
+1. Clareza: entendimento em até 3 segundos;
+2. Utilidade: texto deve ajudar a decidir ou agir;
+3. Empatia: sem tom culpabilizante;
+4. Consistência: vocabulário padronizado no app.
+
+### 7.2 Estrutura de mensagens
+
+Em erros e avisos, usar a fórmula:
+
+- O que aconteceu + o que fazer agora.
+
+Exemplo:
+- Não foi possível salvar seu perfil. Revise os dados e tente de novo.
+
+### 7.3 CTAs
+
+- Começar com verbo no infinitivo;
+- Máximo 3 palavras quando possível;
+- Ação principal em destaque.
+
+Vocabulário preferido:
+- Adicionar
+- Salvar
+- Continuar
+- Confirmar
+- Cancelar
+- Excluir
+- Tentar de novo
+
+### 7.4 Campos de formulário
+
+- Label curto, sem dois-pontos;
+- Placeholder com exemplo de formato;
+- Erro inline indicando o que corrigir.
+
+---
+
+## 8. Conteúdo mínimo por bloco (copy funcional)
+
+### 8.1 Conta
+
+- Título: Conta
+- Campos: E-mail, Nome, Sobrenome
+- CTA: Salvar dados
+
+### 8.2 Dados pessoais
+
+- Título: Dados pessoais
+- Campos: Altura, Data de nascimento, Sexo
+- CTA: Salvar perfil
+
+### 8.3 Dispositivos
+
+- Título: Dispositivos
+- Estado vazio: Nenhum dispositivo vinculado.
+- CTA vazio: Adicionar dispositivo
+- CTA item: Excluir
+
+### 8.4 Meta
+
+- Título: Meta biométrica
+- Estado vazio: Nenhuma meta ativa no momento.
+- CTA vazio: Criar meta
+- CTA edição: Salvar meta
+
+### 8.5 Profissionais
+
+- Título: Profissionais vinculados
+- Estado vazio: Você ainda não possui profissionais vinculados.
+
+---
+
+## 9. Requisitos não funcionais
+
+### RNF-PERFIL-001 — Performance
+
+- Tempo de carregamento percebido da página: até 2 segundos em rede estável (com skeleton/loading).
+
+### RNF-PERFIL-002 — Resiliência
+
+- Em falhas de rede, exibir erro com ação de retentativa.
+
+### RNF-PERFIL-003 — Segurança
+
+- Todos os endpoints da página de Perfil exigem JWT;
+- Não exibir dados sensíveis além do necessário;
+- Não registrar token em logs do cliente.
+
+### RNF-PERFIL-004 — Acessibilidade
+
+- Labels semânticos para leitores de tela;
+- Mensagens de erro associadas ao campo;
+- Não depender só de cor para estado.
+
+---
+
+## 10. Critérios de aceite
+
+1. Usuário visualiza dados da conta e perfil sem inconsistência com backend.
+2. Usuário consegue editar nome/sobrenome e salvar com feedback de sucesso.
+3. Usuário consegue editar dados do perfil e validar campos inválidos.
+4. Usuário consegue listar, vincular e desvincular dispositivo Xiaomi.
+5. Usuário consegue visualizar e gerenciar meta biométrica ativa.
+6. Usuário visualiza lista de profissionais vinculados.
+7. Todos os textos da tela seguem as Diretrizes de UX Writing do UNIO.
+
+---
+
+## 11. Entregáveis esperados
+
+### UX/UI
+
+- Wireframe e mockup de todos os blocos da página Perfil;
+- Estados vazio/carregando/sucesso/erro;
+- Especificação de componentes e microcopy.
+
+### Frontend Mobile
+
+- Implementação da página com integração de APIs listadas;
+- Validações de formulário;
+- Tratamento de erros e feedback visual;
+- Instrumentação de eventos de analytics.
+
+---
+
+## 12. Próximos passos sugeridos
+
+1. Criar documento de copy dedicado da página de Perfil (texto final por componente);
+2. Definir eventos de analytics da página (`perfil_visualizado`, `perfil_salvo`, `dispositivo_vinculado`, `meta_atualizada`);
+3. Planejar evolução para preferências avançadas e upload de foto nativo.
