@@ -68,6 +68,7 @@ Preferred communication style: Simple, everyday language.
   - `log_importacao_alimentos` — Per-food import audit log
   - `food_stock` — Pantry inventory tracking
   - `hydration_records` — Water/beverage intake tracking (soft delete via deletedAt, beverageType enum AGUA/SUCO/CAFE/CHA/LEITE/ISOTONICO/OUTRO)
+  - `pesagens_pendentes` — BLE kitchen scale pending weighings (tri-state: PENDENTE/ASSOCIADA/DESCARTADA, dedup signature, FKs to users/foods/mealEntries)
   - `sync_log` — Change tracking for offline sync
 - **Seed Data:** `server/seed.ts` provides 15 legacy foods, 20 TBCA foods (with full nutritional composition across 15 nutrients), 14 food groups, 8 food types, and a default user
 
@@ -80,7 +81,24 @@ Preferred communication style: Simple, everyday language.
 - Sync log table tracks all mutations for audit trail
 - Scale screen fully integrated: weight readings persist to `body_records` via sync push
 
-### BLE Integration (Mock)
+### BLE Kitchen Scale (ICOMON)
+- **Parser:** `server/ble-parser.ts` — ICOMON packet parser supporting 14-byte and 20-byte hex formats
+  - Control byte [0]: stability flag (0x20 bit) + unit code (0x0F mask)
+  - Weight: bytes [11-12] for 14B, bytes [3-4] for 20B (big-endian uint16)
+  - 7 unit conversions: g (1:1), ml (1:1), ml_milk (×1.03), oz (×28.35÷10), lb_oz (×28.35÷10), fl_oz (×29.5735÷10), fl_oz_milk (×30.42÷10)
+  - Physical limits: 0 < weight ≤ 5000g
+- **Pending Queue Pattern:** BLE readings create PENDENTE entries in `pesagens_pendentes` table; user later associates with food or discards
+- **Deduplication:** 5-second window using signature (userId:roundedWeight:unit:MAC)
+- **Endpoints:**
+  - `POST /api/nutricao/diario/balanca-cozinha` — Ingestion (hex parse or manual weight, dedup, optional food association)
+  - `GET /api/nutricao/diario/pesagens-pendentes` — List user's pending weighings
+  - `POST /api/nutricao/diario/pesagens-pendentes/:id/associar` — Associate pending weighing with food
+  - `DELETE /api/nutricao/diario/pesagens-pendentes/:id` — Discard pending weighing (soft delete via status change)
+- **Security:** Auth required, user-scoped queries, rate limiting (30 req/min per user), audit logging
+- **Atomic Operations:** Association/discard use DB transactions with SELECT FOR UPDATE row-level locks
+- **E2E Tests:** 23 tests in `tests/ble-kitchen-scale.test.ts`
+
+### BLE Smart Scale (Xiaomi Mi Scale 2 — Mock)
 - `client/src/lib/ble-mock.ts` simulates Bluetooth Low Energy connection to Xiaomi Mi Scale 2
 - Produces mock weight/impedance measurements
 - Real BLE integration planned via external scanner posting to `POST /api/biometria/registrar/xiaomi`
