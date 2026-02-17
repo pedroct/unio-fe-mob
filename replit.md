@@ -94,9 +94,12 @@ Preferred communication style: Simple, everyday language.
   - `GET /api/nutricao/diario/pesagens-pendentes` — List user's pending weighings
   - `POST /api/nutricao/diario/pesagens-pendentes/:id/associar` — Associate pending weighing with food
   - `DELETE /api/nutricao/diario/pesagens-pendentes/:id` — Discard pending weighing (soft delete via status change)
-- **Security:** Auth required, user-scoped queries, rate limiting (30 req/min per user), audit logging
+- **Security:** Auth required, user-scoped queries, rate limiting (30 req/min per user+MAC composite key), audit logging
 - **Atomic Operations:** Association/discard use DB transactions with SELECT FOR UPDATE row-level locks
-- **E2E Tests:** 23 tests in `tests/ble-kitchen-scale.test.ts`
+- **Rate Limiting:** Configurable window (default 60s/30 req), composite key `ble:{userId}:{mac}`, standardized 429 response `{erro, codigo: "BLE_RATE_LIMIT", detalhe}`
+- **Metrics:** In-memory counters at `GET /api/ble/metrics` — ingestion success/error, dedup count, 429 blocks, association success/error with latency tracking
+- **Observability:** `server/ble-metrics.ts` — correlation IDs (`ble-XXXXXXXX`) in structured JSON audit logs, sensitive data stripped (no JWT/passwords/raw payloads)
+- **E2E Tests:** 24 tests in `tests/ble-kitchen-scale.test.ts` (Phase 1+2 incl. concurrency), 10 tests in `tests/ble-phase3-security.test.ts` (rate limit, metrics, audit, regression)
 
 ### BLE Smart Scale (Xiaomi Mi Scale 2 — Mock)
 - `client/src/lib/ble-mock.ts` simulates Bluetooth Low Energy connection to Xiaomi Mi Scale 2

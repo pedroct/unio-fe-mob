@@ -305,6 +305,52 @@ describe("BLE Kitchen Scale E2E", () => {
     });
   });
 
+  describe("5.3b Concorrência na associação", () => {
+    it("Duas associações simultâneas da mesma pesagem: apenas 1 sucesso", async () => {
+      const createRes = await fetch(`${BASE}/api/nutricao/diario/balanca-cozinha`, {
+        method: "POST",
+        headers: authHeaders(accessToken),
+        body: JSON.stringify({ peso: 321, unidade: "g", mac_balanca: "CC:CC:CC:CC:CC:01" }),
+      });
+      const createData = await createRes.json();
+      const pesagemId = createData.pesagem_id;
+
+      const foodsRes = await fetch(`${BASE}/api/foods`, {
+        headers: authHeaders(accessToken),
+      });
+      const foods = await foodsRes.json();
+      const foodId = foods[0].id;
+
+      const associarPayload = JSON.stringify({ alimento_id: foodId, meal_slot: "lunch" });
+      const url = `${BASE}/api/nutricao/diario/pesagens-pendentes/${pesagemId}/associar`;
+
+      const [res1, res2] = await Promise.all([
+        fetch(url, { method: "POST", headers: authHeaders(accessToken), body: associarPayload }),
+        fetch(url, { method: "POST", headers: authHeaders(accessToken), body: associarPayload }),
+      ]);
+
+      const statuses = [res1.status, res2.status].sort();
+      expect(statuses).toEqual([200, 400]);
+
+      const successRes = res1.status === 200 ? res1 : res2;
+      const failRes = res1.status === 400 ? res1 : res2;
+
+      const successData = await successRes.json();
+      expect(successData.sucesso).toBe(true);
+      expect(successData.registro_id).toBeDefined();
+
+      const failData = await failRes.json();
+      expect(failData.error).toBeDefined();
+
+      const pendentesRes = await fetch(`${BASE}/api/nutricao/diario/pesagens-pendentes`, {
+        headers: authHeaders(accessToken),
+      });
+      const pendentesData = await pendentesRes.json();
+      const found = pendentesData.itens.find((i: any) => i.id === pesagemId);
+      expect(found).toBeUndefined();
+    });
+  });
+
   describe("5.4 Segurança e isolamento", () => {
     let user1PesagemId = "";
 

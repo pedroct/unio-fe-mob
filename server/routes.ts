@@ -32,6 +32,19 @@ import {
   validatePhysicalLimits,
   buildDedupSignature,
 } from "./ble-parser";
+import {
+  generateCorrelationId,
+  auditLog,
+  incIngestaoSucesso,
+  incIngestaoErro,
+  incDedup,
+  incRateLimitBloqueio,
+  incAssociacaoSucesso,
+  incAssociacaoErro,
+  incDescarteSucesso,
+  incDescarteErro,
+  getMetrics,
+} from "./ble-metrics";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import {
@@ -974,19 +987,36 @@ export async function registerRoutes(
 
   // ── BLE Balança de Cozinha ──
 
+  const BLE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+  const BLE_RATE_LIMIT_MAX = 30;
+
   const bleRateLimit = rateLimit({
-    windowMs: 60 * 1000,
-    max: 30,
+    windowMs: BLE_RATE_LIMIT_WINDOW_MS,
+    max: BLE_RATE_LIMIT_MAX,
     keyGenerator: (req) => {
       const userId = getUserId(req);
-      return `ble:${userId}`;
+      const mac = req.body?.mac_balanca;
+      return mac ? `ble:${userId}:${mac}` : `ble:${userId}`;
     },
-    handler: (_req, res) => {
-      res.status(429).json({ error: "Limite de requisições BLE excedido. Tente novamente em 1 minuto." });
+    handler: (req, res) => {
+      const userId = getUserId(req);
+      const cid = generateCorrelationId();
+      incRateLimitBloqueio();
+      auditLog(cid, "RATE_LIMIT_BLOQUEADO", userId, { mac: req.body?.mac_balanca || null });
+      res.status(429).json({
+        erro: "Limite de requisições BLE excedido.",
+        codigo: "BLE_RATE_LIMIT",
+        detalhe: `Máximo de ${BLE_RATE_LIMIT_MAX} requisições por minuto. Tente novamente em breve.`,
+      });
     },
   });
 
+  app.get("/api/ble/metrics", requireAuth, (_req, res) => {
+    res.json(getMetrics());
+  });
+
   app.post("/api/nutricao/diario/balanca-cozinha", requireAuth, bleRateLimit, async (req, res) => {
+    const cid = generateCorrelationId();
     try {
       const userId = getUserId(req);
       const parsed = ingestaoBalancaSchema.parse(req.body);
@@ -999,7 +1029,8 @@ export async function registerRoutes(
       if (parsed.pacote_hex) {
         const result = parseIcomonPacket(parsed.pacote_hex);
         if ("error" in result) {
-          console.warn(`[BLE-AUDIT] Pacote HEX inválido de usuário ${userId}: ${result.message}`);
+          incIngestaoErro();
+          auditLog(cid, "INGESTAO_PARSE_ERRO", userId, { erro: result.message });
           return res.status(400).json({ error: result.message });
         }
         pesoOriginal = result.pesoOriginal;
@@ -1011,12 +1042,14 @@ export async function registerRoutes(
         const conv = convertToGrams(parsed.peso!, parsed.unidade!);
         pesoGramas = conv.pesoGramas;
         if (!conv.unidadeReconhecida) {
-          console.warn(`[BLE-AUDIT] Unidade desconhecida "${parsed.unidade}" de usuário ${userId}. Fallback aplicado.`);
+          auditLog(cid, "UNIDADE_DESCONHECIDA", userId, { unidade: parsed.unidade });
         }
       }
 
       const limitError = validatePhysicalLimits(pesoGramas);
       if (limitError) {
+        incIngestaoErro();
+        auditLog(cid, "INGESTAO_LIMITE_ERRO", userId, { pesoGramas, erro: limitError });
         return res.status(400).json({ error: limitError });
       }
 
@@ -1025,7 +1058,8 @@ export async function registerRoutes(
 
       const dup = await storage.findDuplicatePesagem(userId, assinatura, 5);
       if (dup) {
-        console.log(`[BLE-AUDIT] Deduplicação: leitura duplicada ignorada para usuário ${userId}, assinatura ${assinatura}`);
+        incDedup();
+        auditLog(cid, "DEDUP", userId, { pesagemId: dup.id, assinatura });
         return res.status(200).json({
           sucesso: true,
           duplicata: true,
@@ -1045,6 +1079,8 @@ export async function registerRoutes(
           alimentoId = food.id;
         } catch (err: any) {
           if (err.message === "Alimento TBCA não encontrado.") {
+            incIngestaoErro();
+            auditLog(cid, "INGESTAO_ALIMENTO_NAO_ENCONTRADO", userId, { alimentoTbcaId: parsed.alimento_tbca_id });
             return res.status(404).json({ error: err.message });
           }
         }
@@ -1062,11 +1098,13 @@ export async function registerRoutes(
         origem: "BLE",
       });
 
-      console.log(`[BLE-AUDIT] Ingestão: pesagem ${pesagem.id} criada por usuário ${userId}, peso ${pesoGramas}g`);
+      auditLog(cid, "INGESTAO_SUCESSO", userId, { pesagemId: pesagem.id, pesoGramas, mac: macBalanca });
 
       if (alimentoId) {
+        const t0 = Date.now();
         const mealSlot = parsed.meal_slot || parsed.refeicao_id || "lanche";
         const { pesagem: updated, registro } = await storage.associarPesagem(pesagem.id, alimentoId, mealSlot, userId);
+        incAssociacaoSucesso(Date.now() - t0);
         const food = await storage.getFood(alimentoId);
         const fator = pesoGramas / (food?.servingSizeG || 100);
         const macros = food ? {
@@ -1076,6 +1114,8 @@ export async function registerRoutes(
           gorduras: Math.round(food.fatG * fator * 100) / 100,
         } : null;
 
+        incIngestaoSucesso();
+        auditLog(cid, "INGESTAO_COM_ASSOCIACAO", userId, { pesagemId: updated.id, alimentoId, registroId: registro.id });
         return res.status(201).json({
           sucesso: true,
           registro_id: registro.id,
@@ -1089,6 +1129,7 @@ export async function registerRoutes(
         });
       }
 
+      incIngestaoSucesso();
       res.status(201).json({
         sucesso: true,
         pesagem_id: pesagem.id,
@@ -1099,10 +1140,13 @@ export async function registerRoutes(
         mensagem: "Leitura registrada. Aguardando associação com alimento.",
       });
     } catch (err) {
+      incIngestaoErro();
       if (err instanceof ZodError) {
+        auditLog(cid, "INGESTAO_VALIDACAO_ERRO", "unknown", { tipo: "zod" });
         const { body } = handleZodFieldErrors(err);
         return res.status(422).json(body);
       }
+      auditLog(cid, "INGESTAO_ERRO_INTERNO", "unknown", {});
       console.error("[BLE] Erro na ingestão:", err);
       res.status(500).json({ error: "Erro ao processar leitura da balança." });
     }
@@ -1130,6 +1174,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/nutricao/diario/pesagens-pendentes/:pesagem_id/associar", requireAuth, async (req, res) => {
+    const cid = generateCorrelationId();
+    const t0 = Date.now();
     try {
       const userId = getUserId(req);
       const pesagemId = req.params.pesagem_id;
@@ -1143,11 +1189,13 @@ export async function registerRoutes(
       }
 
       if (!alimentoId) {
+        incAssociacaoErro();
         return res.status(422).json({ error: "Alimento não identificado." });
       }
 
       const food = await storage.getFood(alimentoId);
       if (!food) {
+        incAssociacaoErro();
         return res.status(404).json({ error: "Alimento não encontrado." });
       }
 
@@ -1162,6 +1210,9 @@ export async function registerRoutes(
         gorduras: Math.round(food.fatG * fator * 100) / 100,
       };
 
+      incAssociacaoSucesso(Date.now() - t0);
+      auditLog(cid, "ASSOCIACAO_SUCESSO", userId, { pesagemId, alimentoId, registroId: registro.id });
+
       res.json({
         sucesso: true,
         pesagem_id: pesagem.id,
@@ -1172,10 +1223,13 @@ export async function registerRoutes(
         mensagem: "Pesagem associada com sucesso.",
       });
     } catch (err: any) {
+      incAssociacaoErro();
       if (err.message === "Pesagem não encontrada.") {
+        auditLog(cid, "ASSOCIACAO_NAO_ENCONTRADA", "unknown", { pesagemId: req.params.pesagem_id });
         return res.status(404).json({ error: err.message });
       }
       if (err.message?.includes("não pode ser associada") || err.message?.includes("já associada")) {
+        auditLog(cid, "ASSOCIACAO_STATUS_INVALIDO", "unknown", { pesagemId: req.params.pesagem_id, erro: err.message });
         return res.status(400).json({ error: err.message });
       }
       if (err.message === "Alimento TBCA não encontrado.") {
@@ -1185,17 +1239,22 @@ export async function registerRoutes(
         const { body } = handleZodFieldErrors(err);
         return res.status(422).json(body);
       }
+      auditLog(cid, "ASSOCIACAO_ERRO_INTERNO", "unknown", {});
       console.error("[BLE] Erro na associação:", err);
       res.status(500).json({ error: "Erro ao associar pesagem." });
     }
   });
 
   app.delete("/api/nutricao/diario/pesagens-pendentes/:pesagem_id", requireAuth, async (req, res) => {
+    const cid = generateCorrelationId();
     try {
       const userId = getUserId(req);
       const pesagemId = req.params.pesagem_id;
 
       const updated = await storage.descartarPesagem(pesagemId, userId);
+
+      incDescarteSucesso();
+      auditLog(cid, "DESCARTE_SUCESSO", userId, { pesagemId });
 
       res.json({
         sucesso: true,
@@ -1204,12 +1263,16 @@ export async function registerRoutes(
         mensagem: "Pesagem descartada com sucesso.",
       });
     } catch (err: any) {
+      incDescarteErro();
       if (err.message === "Pesagem não encontrada.") {
+        auditLog(cid, "DESCARTE_NAO_ENCONTRADA", "unknown", { pesagemId: req.params.pesagem_id });
         return res.status(404).json({ error: err.message });
       }
       if (err.message?.includes("já associada") || err.message?.includes("já foi descartada")) {
+        auditLog(cid, "DESCARTE_STATUS_INVALIDO", "unknown", { pesagemId: req.params.pesagem_id, erro: err.message });
         return res.status(400).json({ error: err.message });
       }
+      auditLog(cid, "DESCARTE_ERRO_INTERNO", "unknown", {});
       console.error("[BLE] Erro no descarte:", err);
       res.status(500).json({ error: "Erro ao descartar pesagem." });
     }
