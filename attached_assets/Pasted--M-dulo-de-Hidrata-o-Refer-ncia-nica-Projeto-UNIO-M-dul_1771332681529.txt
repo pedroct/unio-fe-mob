@@ -1,0 +1,361 @@
+# Módulo de Hidratação — Referência Única
+
+Projeto: UNIO  
+Módulo: Hidratação (Backend + Frontend Mobile/Web)  
+Versão: 1.0  
+Data: 17 de Fevereiro de 2026  
+Status: Especificação consolidada
+
+---
+
+## 1. Objetivo
+
+Consolidar em um único documento as definições funcionais e técnicas do módulo de Hidratação, incluindo:
+
+- escopo de implementação;
+- contrato de API;
+- regras de validação e segurança;
+- critérios de aceite;
+- roteiro de testes ponta a ponta.
+
+---
+
+## 2. Escopo do módulo
+
+### 2.1 Escopo principal
+
+- Meta diária de hidratação por usuário;
+- Registro de ingestão de líquidos;
+- Resumo diário (consumido, restante e percentual);
+- Histórico por período;
+- Exclusão de registro com recálculo automático.
+
+### 2.2 Escopo de interface
+
+- Card de hidratação na Home consumindo dados reais;
+- Tela de hidratação dedicada consumindo dados reais;
+- Sincronização imediata entre Home e tela de Hidratação após criar/excluir registro e após alterar meta.
+
+### 2.3 Fora de escopo desta fase
+
+- Recomendações personalizadas por clima;
+- Sugestão automática de meta por perfil metabólico;
+- Gamificação avançada de hidratação.
+
+---
+
+## 3. Modelo de dados (mínimo)
+
+### 3.1 Configuração de meta por usuário
+
+Campos mínimos esperados:
+
+- `id_usuario`
+- `ml_meta_diaria`
+- `atualizado_em`
+
+### 3.2 Registro de hidratação
+
+Campos mínimos esperados:
+
+- `id`
+- `id_usuario`
+- `quantidade_ml`
+- `tipo_bebida`
+- `registrado_em`
+- `criado_em`
+- `atualizado_em`
+
+### 3.3 Índices recomendados
+
+- índice por `id_usuario`
+- índice por `id_usuario, registrado_em`
+
+---
+
+## 4. Regras de negócio
+
+1. Todo registro pertence ao usuário autenticado.
+2. `quantidade_ml` deve ser maior que zero.
+3. Meta diária deve ser inteira positiva.
+4. Ao criar ou excluir registro, o resumo diário deve ser recálculo no servidor.
+5. O resumo deve refletir: consumido, meta, restante, percentual e status de meta atingida.
+6. Todas as rotas devem respeitar isolamento por usuário.
+
+---
+
+## 5. Contrato de API
+
+Base path: `/api/hidratacao`
+
+## 5.1 Buscar meta diária
+
+**GET** `/meta`
+
+### Resposta 200
+
+```json
+{
+  "ml_meta_diaria": 2500,
+  "atualizado_em": "2026-02-17T10:30:00Z"
+}
+```
+
+---
+
+## 5.2 Atualizar meta diária
+
+**PATCH** `/meta`
+
+### Requisição
+
+```json
+{
+  "ml_meta_diaria": 3000
+}
+```
+
+### Validação
+
+- `ml_meta_diaria` obrigatório;
+- inteiro positivo;
+- faixa recomendada: `500` a `10000`.
+
+### Resposta 200
+
+```json
+{
+  "ml_meta_diaria": 3000,
+  "atualizado_em": "2026-02-17T10:35:00Z",
+  "mensagem": "Meta diária atualizada com sucesso."
+}
+```
+
+---
+
+## 5.3 Criar registro de hidratação
+
+**POST** `/registros`
+
+### Requisição
+
+```json
+{
+  "quantidade_ml": 500,
+  "tipo_bebida": "AGUA",
+  "registrado_em": "2026-02-17T10:40:00Z"
+}
+```
+
+### Observações
+
+- `registrado_em` opcional (se ausente, usar horário do servidor);
+- `tipo_bebida` enum sugerido:
+  - `AGUA`
+  - `SUCO`
+  - `CAFE`
+  - `CHA`
+  - `LEITE`
+  - `ISOTONICO`
+  - `OUTRO`
+
+### Resposta 201
+
+```json
+{
+  "id": "3f8b0f1a-6d4a-4d30-8d87-9a5d9a6d2a11",
+  "quantidade_ml": 500,
+  "tipo_bebida": "AGUA",
+  "registrado_em": "2026-02-17T10:40:00Z",
+  "resumo_dia": {
+    "data": "2026-02-17",
+    "consumido_ml": 1500,
+    "meta_ml": 3000,
+    "restante_ml": 1500,
+    "percentual": 50
+  },
+  "mensagem": "Registro de hidratação criado com sucesso."
+}
+```
+
+---
+
+## 5.4 Listar registros por período
+
+**GET** `/registros?inicio=2026-02-01&fim=2026-02-17`
+
+### Parâmetros
+
+- `inicio` opcional (`YYYY-MM-DD`)
+- `fim` opcional (`YYYY-MM-DD`)
+- sem parâmetros: padrão “hoje”
+
+### Resposta 200
+
+```json
+{
+  "itens": [
+    {
+      "id": "3f8b0f1a-6d4a-4d30-8d87-9a5d9a6d2a11",
+      "quantidade_ml": 500,
+      "tipo_bebida": "AGUA",
+      "registrado_em": "2026-02-17T10:40:00Z"
+    }
+  ],
+  "total_itens": 1
+}
+```
+
+---
+
+## 5.5 Excluir registro
+
+**DELETE** `/registros/:id`
+
+### Resposta 200
+
+```json
+{
+  "id": "3f8b0f1a-6d4a-4d30-8d87-9a5d9a6d2a11",
+  "removido": true,
+  "resumo_dia": {
+    "data": "2026-02-17",
+    "consumido_ml": 1000,
+    "meta_ml": 3000,
+    "restante_ml": 2000,
+    "percentual": 33.33
+  },
+  "mensagem": "Registro removido com sucesso."
+}
+```
+
+---
+
+## 5.6 Buscar resumo do dia
+
+**GET** `/resumo?data=2026-02-17`
+
+### Parâmetro
+
+- `data` opcional (`YYYY-MM-DD`), padrão “hoje”
+
+### Resposta 200
+
+```json
+{
+  "data": "2026-02-17",
+  "consumido_ml": 1000,
+  "meta_ml": 3000,
+  "restante_ml": 2000,
+  "percentual": 33.33,
+  "atingiu_meta": false
+}
+```
+
+---
+
+## 6. Padrão de erros
+
+### Formato padrão
+
+```json
+{
+  "errors": [
+    {
+      "field": "quantidade_ml",
+      "message": "Quantidade deve ser maior que zero."
+    }
+  ]
+}
+```
+
+### Códigos esperados
+
+- `401` sem token;
+- `403` acesso cruzado;
+- `404` registro não encontrado;
+- `422` erro de validação de entrada.
+
+---
+
+## 7. Segurança e isolamento
+
+1. Todas as rotas são protegidas por token.
+2. Consultas e mutações sempre filtram por `id_usuario` autenticado.
+3. Não expor registros de outro usuário em hipótese alguma.
+4. Registrar auditoria mínima de alterações relevantes.
+
+---
+
+## 8. Regras de experiência e sincronização de interface
+
+1. Após `POST /registros`, atualizar imediatamente:
+   - total na tela de hidratação;
+   - card de hidratação na Home;
+   - histórico do dia.
+2. Após `DELETE /registros/:id`, recalcular e atualizar imediatamente os mesmos blocos.
+3. Após `PATCH /meta`, refletir nova meta na Home e na tela dedicada sem necessidade de recarregar a aplicação.
+
+---
+
+## 9. Critérios de aceite
+
+1. É possível criar registro de hidratação com persistência real no banco.
+2. É possível excluir registro e observar recálculo correto do resumo.
+3. Home e tela de hidratação permanecem sincronizadas após criar/excluir/alterar meta.
+4. Filtro por período retorna apenas registros do usuário autenticado no intervalo solicitado.
+5. Sem token retorna `401` em todas as rotas protegidas.
+6. Acesso cruzado retorna `403`.
+7. Estados de carregamento, vazio, sucesso e erro estão implementados na interface.
+
+---
+
+## 10. Testes ponta a ponta recomendados
+
+## 10.1 Cenário: criação e recálculo
+
+- criar 2 registros;
+- validar total consumido e percentual;
+- excluir 1 registro;
+- validar novo total e restante.
+
+## 10.2 Cenário: meta diária
+
+- buscar meta atual;
+- atualizar meta;
+- validar reflexo em resumo e Home.
+
+## 10.3 Cenário: isolamento por usuário
+
+- tentar acessar registro de outro usuário;
+- validar `403`.
+
+## 10.4 Cenário: autenticação
+
+- chamar rota sem token;
+- validar `401`.
+
+## 10.5 Cenário: validação
+
+- enviar `quantidade_ml <= 0`;
+- enviar data inválida;
+- validar `422` com erro por campo.
+
+---
+
+## 11. Observações técnicas
+
+- Usar UTC no banco e converter para exibição local no cliente.
+- Recalcular resumo no servidor para evitar divergência de lógica entre telas.
+- Evitar dados fixos nas telas que já estão integradas.
+
+---
+
+## 12. Definição de pronto
+
+O módulo de Hidratação é considerado pronto quando:
+
+- todas as rotas estão implementadas e protegidas;
+- interface não depende de dados fixos;
+- sincronização Home ↔ Hidratação funciona em tempo de uso;
+- testes ponta a ponta críticos estão aprovados.
