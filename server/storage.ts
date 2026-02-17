@@ -7,6 +7,7 @@ import {
   goals,
   foods,
   foodStock,
+  purchaseRecords,
   hydrationRecords,
   syncLog,
   type User,
@@ -21,6 +22,8 @@ import {
   type InsertFood,
   type FoodStock,
   type InsertFoodStock,
+  type PurchaseRecord,
+  type InsertPurchaseRecord,
   type HydrationRecord,
   type InsertHydrationRecord,
 } from "@shared/schema";
@@ -32,6 +35,7 @@ const SYNC_TABLES = {
   goals,
   foods,
   food_stock: foodStock,
+  purchase_records: purchaseRecords,
   hydration_records: hydrationRecords,
 } as const;
 
@@ -77,6 +81,14 @@ export interface IStorage {
   createFoodStock(stock: InsertFoodStock): Promise<FoodStock>;
   updateFoodStock(id: string, data: Partial<InsertFoodStock>): Promise<FoodStock | undefined>;
   softDeleteFoodStock(id: string): Promise<void>;
+
+  getFoodStockWithStatus(userId: string): Promise<(FoodStock & { status: string })[]>;
+
+  createPurchaseRecord(record: InsertPurchaseRecord): Promise<PurchaseRecord>;
+  getPendingPurchasesByUser(userId: string): Promise<PurchaseRecord[]>;
+  getPurchaseHistoryByUser(userId: string): Promise<PurchaseRecord[]>;
+  confirmPurchase(purchaseId: string, actualQuantity: number): Promise<{ purchase: PurchaseRecord; stock: FoodStock }>;
+  confirmAllPurchases(userId: string, items: Array<{ purchaseId: string; actualQuantity: number }>): Promise<{ confirmed: number }>;
 
   createHydrationRecord(record: InsertHydrationRecord): Promise<HydrationRecord>;
   getHydrationByUserToday(userId: string): Promise<HydrationRecord[]>;
@@ -300,6 +312,94 @@ export class DatabaseStorage implements IStorage {
     const now = new Date();
     await db.update(foodStock).set({ deletedAt: now, updatedAt: now }).where(eq(foodStock.id, id));
     await this.logSync("food_stock", id, "delete", null);
+  }
+
+  private computeStockStatus(quantityG: number, minQuantityG: number): string {
+    if (minQuantityG <= 0) return "good";
+    const ratio = quantityG / minQuantityG;
+    if (ratio <= 0.1) return "critical";
+    if (ratio <= 0.4) return "low";
+    if (ratio <= 0.7) return "medium";
+    return "good";
+  }
+
+  async getFoodStockWithStatus(userId: string): Promise<(FoodStock & { status: string })[]> {
+    const items = await db.select().from(foodStock).where(and(eq(foodStock.userId, userId), notDeleted(foodStock)));
+    return items.map(item => ({
+      ...item,
+      status: this.computeStockStatus(item.quantityG, item.minQuantityG),
+    }));
+  }
+
+  // ── Purchase Records ──
+  async createPurchaseRecord(data: InsertPurchaseRecord): Promise<PurchaseRecord> {
+    const [r] = await db.insert(purchaseRecords).values(data).returning();
+    await this.logSync("purchase_records", r.id, "create", r);
+    return r;
+  }
+
+  async getPendingPurchasesByUser(userId: string): Promise<PurchaseRecord[]> {
+    return db
+      .select()
+      .from(purchaseRecords)
+      .where(
+        and(
+          eq(purchaseRecords.userId, userId),
+          eq(purchaseRecords.status, "pending"),
+          notDeleted(purchaseRecords)
+        )
+      )
+      .orderBy(desc(purchaseRecords.createdAt));
+  }
+
+  async getPurchaseHistoryByUser(userId: string): Promise<PurchaseRecord[]> {
+    return db
+      .select()
+      .from(purchaseRecords)
+      .where(
+        and(
+          eq(purchaseRecords.userId, userId),
+          eq(purchaseRecords.status, "confirmed"),
+          notDeleted(purchaseRecords)
+        )
+      )
+      .orderBy(desc(purchaseRecords.purchasedAt));
+  }
+
+  async confirmPurchase(purchaseId: string, actualQuantity: number): Promise<{ purchase: PurchaseRecord; stock: FoodStock }> {
+    const [purchase] = await db
+      .update(purchaseRecords)
+      .set({ actualQuantity, status: "confirmed", purchasedAt: new Date(), updatedAt: new Date() })
+      .where(eq(purchaseRecords.id, purchaseId))
+      .returning();
+
+    if (!purchase) throw new Error("Purchase not found");
+
+    const [currentStock] = await db.select().from(foodStock).where(eq(foodStock.id, purchase.foodStockId));
+    if (!currentStock) throw new Error("Stock item not found");
+
+    const newQuantity = currentStock.quantityG + actualQuantity;
+    const [updatedStock] = await db
+      .update(foodStock)
+      .set({ quantityG: newQuantity, updatedAt: new Date() })
+      .where(eq(foodStock.id, purchase.foodStockId))
+      .returning();
+
+    await this.logSync("purchase_records", purchase.id, "update", purchase);
+    await this.logSync("food_stock", updatedStock.id, "update", updatedStock);
+
+    return { purchase, stock: updatedStock };
+  }
+
+  async confirmAllPurchases(userId: string, items: Array<{ purchaseId: string; actualQuantity: number }>): Promise<{ confirmed: number }> {
+    let confirmed = 0;
+    for (const item of items) {
+      try {
+        await this.confirmPurchase(item.purchaseId, item.actualQuantity);
+        confirmed++;
+      } catch {}
+    }
+    return { confirmed };
   }
 
   // ── Hydration Records ──

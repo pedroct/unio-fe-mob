@@ -8,6 +8,7 @@ import {
   insertGoalSchema,
   insertFoodSchema,
   insertFoodStockSchema,
+  insertPurchaseRecordSchema,
   insertHydrationRecordSchema,
   syncPullQuerySchema,
   syncPushRequestSchema,
@@ -236,6 +237,64 @@ export async function registerRoutes(
   app.delete("/api/food-stock/:id", async (req, res) => {
     await storage.softDeleteFoodStock(req.params.id);
     res.status(204).end();
+  });
+
+  app.get("/api/users/:userId/food-stock/status", async (req, res) => {
+    try {
+      const items = await storage.getFoodStockWithStatus(req.params.userId);
+      res.json(items);
+    } catch (err) {
+      const { status, body } = handleZodError(err);
+      res.status(status).json(body);
+    }
+  });
+
+  // ── Purchase Records ──
+  app.get("/api/users/:userId/purchases/pending", async (req, res) => {
+    const purchases = await storage.getPendingPurchasesByUser(req.params.userId);
+    res.json(purchases);
+  });
+
+  app.get("/api/users/:userId/purchases/history", async (req, res) => {
+    const purchases = await storage.getPurchaseHistoryByUser(req.params.userId);
+    res.json(purchases);
+  });
+
+  app.post("/api/purchases", async (req, res) => {
+    try {
+      const data = insertPurchaseRecordSchema.parse(req.body);
+      const purchase = await storage.createPurchaseRecord(data);
+      res.status(201).json(purchase);
+    } catch (err) {
+      const { status, body } = handleZodError(err);
+      res.status(status).json(body);
+    }
+  });
+
+  app.post("/api/purchases/:id/confirm", async (req, res) => {
+    try {
+      const { actualQuantity } = req.body;
+      if (typeof actualQuantity !== "number" || actualQuantity < 0) {
+        return res.status(400).json({ error: "actualQuantity must be a non-negative number" });
+      }
+      const result = await storage.confirmPurchase(req.params.id, actualQuantity);
+      res.json(result);
+    } catch (err: any) {
+      res.status(404).json({ error: err.message || "Purchase not found" });
+    }
+  });
+
+  app.post("/api/users/:userId/purchases/confirm-all", async (req, res) => {
+    try {
+      const { items } = req.body;
+      if (!Array.isArray(items)) {
+        return res.status(400).json({ error: "items must be an array" });
+      }
+      const result = await storage.confirmAllPurchases(req.params.userId, items);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to confirm purchases" });
+    }
   });
 
   // ── Hydration Records ──

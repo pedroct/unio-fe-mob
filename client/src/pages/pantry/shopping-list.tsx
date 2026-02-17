@@ -1,45 +1,108 @@
 import Layout from "@/components/layout";
-import { ChevronLeft, ShoppingCart, Check, Plus, Minus, Trash2 } from "lucide-react";
+import { ChevronLeft, ShoppingCart, Check, Plus, Minus, ShoppingBag } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { FoodStock } from "@shared/schema";
 
-const INVENTORY_DATA = [
-  { id: 1, name: "Whey Protein", category: "Suplementos", quantity: "200g", status: "low", image: "⚡" },
-  { id: 2, name: "Arroz Basmati", category: "Grãos", quantity: "2kg", status: "good", image: "🍚" },
-  { id: 3, name: "Peito de Frango", category: "Proteínas", quantity: "3kg", status: "good", image: "🍗" },
-  { id: 4, name: "Azeite de Oliva", category: "Gorduras", quantity: "100ml", status: "critical", image: "🫒" },
-  { id: 5, name: "Aveia em Flocos", category: "Grãos", quantity: "500g", status: "medium", image: "🥣" },
-  { id: 6, name: "Creatina", category: "Suplementos", quantity: "150g", status: "good", image: "💪" },
-];
+const DEFAULT_USER_ID = "5403356d-c894-43f3-846a-513f8e1ad4bb";
+
+type StockItem = FoodStock & { status: string };
+
+function formatQuantity(qty: number, unit: string): string {
+  if (unit === "kg") return `${(qty / 1000).toFixed(1).replace(".", ",")}kg`;
+  if (unit === "ml") return `${qty}ml`;
+  if (unit === "un") return `${qty} un`;
+  if (qty >= 1000) return `${(qty / 1000).toFixed(1).replace(".", ",")}kg`;
+  return `${qty}g`;
+}
+
+function defaultBuyQty(item: StockItem): number {
+  const deficit = item.minQuantityG - item.quantityG;
+  if (deficit <= 0) return 1;
+  if (item.unit === "un") return Math.ceil(deficit);
+  if (item.unit === "kg") return Math.ceil(deficit / 1000);
+  return Math.ceil(deficit / 100) * 100;
+}
+
+function buyQtyToStockUnits(qty: number, unit: string): number {
+  if (unit === "kg") return qty * 1000;
+  return qty;
+}
 
 export default function ShoppingListScreen() {
   const [, setLocation] = useLocation();
-  const [checkedItems, setCheckedItems] = useState<Set<number>>(new Set());
-  const [quantities, setQuantities] = useState<Record<number, number>>(() => {
-    const initial: Record<number, number> = {};
-    INVENTORY_DATA.filter(i => i.status === "low" || i.status === "critical").forEach(i => {
-      initial[i.id] = 1;
-    });
-    return initial;
+  const queryClient = useQueryClient();
+  const [buyQuantities, setBuyQuantities] = useState<Record<string, number>>({});
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
+  const [confirmQty, setConfirmQty] = useState(0);
+
+  const { data: stockItems = [], isLoading } = useQuery<StockItem[]>({
+    queryKey: ["food-stock", "status", DEFAULT_USER_ID],
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${DEFAULT_USER_ID}/food-stock/status`);
+      if (!res.ok) throw new Error("Failed to fetch stock");
+      return res.json();
+    },
   });
 
-  const shoppingItems = INVENTORY_DATA.filter(item => item.status === "low" || item.status === "critical");
+  const purchaseMutation = useMutation({
+    mutationFn: async ({ stockItem, actualQuantity }: { stockItem: StockItem; actualQuantity: number }) => {
+      const plannedQty = buyQuantities[stockItem.id] ?? defaultBuyQty(stockItem);
 
-  const updateQuantity = (id: number, delta: number) => {
-    setQuantities(prev => ({
-      ...prev,
-      [id]: Math.max(1, (prev[id] || 1) + delta),
-    }));
+      const createRes = await fetch("/api/purchases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: DEFAULT_USER_ID,
+          foodStockId: stockItem.id,
+          plannedQuantity: buyQtyToStockUnits(plannedQty, stockItem.unit),
+          actualQuantity: buyQtyToStockUnits(actualQuantity, stockItem.unit),
+          unit: stockItem.unit,
+          status: "pending",
+        }),
+      });
+      if (!createRes.ok) throw new Error("Failed to create purchase");
+      const purchase = await createRes.json();
+
+      const confirmRes = await fetch(`/api/purchases/${purchase.id}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actualQuantity: buyQtyToStockUnits(actualQuantity, stockItem.unit),
+        }),
+      });
+      if (!confirmRes.ok) throw new Error("Failed to confirm purchase");
+      return confirmRes.json();
+    },
+    onSuccess: (_, vars) => {
+      setConfirmedIds(prev => new Set(prev).add(vars.stockItem.id));
+      setConfirmingId(null);
+      queryClient.invalidateQueries({ queryKey: ["food-stock"] });
+    },
+  });
+
+  const shoppingItems = stockItems.filter(item => item.status === "low" || item.status === "critical");
+
+  const getBuyQty = useCallback((item: StockItem) => {
+    return buyQuantities[item.id] ?? defaultBuyQty(item);
+  }, [buyQuantities]);
+
+  const updateBuyQty = (id: string, delta: number, item: StockItem) => {
+    const current = buyQuantities[id] ?? defaultBuyQty(item);
+    setBuyQuantities(prev => ({ ...prev, [id]: Math.max(1, current + delta) }));
   };
 
-  const toggleItem = (id: number) => {
-    setCheckedItems(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const handleBuyClick = (item: StockItem) => {
+    const qty = getBuyQty(item);
+    setConfirmQty(qty);
+    setConfirmingId(item.id);
+  };
+
+  const handleConfirm = (item: StockItem) => {
+    purchaseMutation.mutate({ stockItem: item, actualQuantity: confirmQty });
   };
 
   const getStatusColor = (status: string) => {
@@ -58,16 +121,17 @@ export default function ShoppingListScreen() {
     }
   };
 
-  const getPriorityLabel = (status: string) => {
-    switch (status) {
-      case 'critical': return 'Urgente';
-      case 'low': return 'Repor em breve';
-      default: return '';
+  const getBuyUnit = (unit: string) => {
+    switch (unit) {
+      case 'kg': return 'kg';
+      case 'ml': return 'ml';
+      case 'un': return 'un';
+      default: return 'g';
     }
   };
 
-  const uncheckedCount = shoppingItems.filter(i => !checkedItems.has(i.id)).length;
-  const checkedCount = shoppingItems.filter(i => checkedItems.has(i.id)).length;
+  const activeItems = shoppingItems.filter(i => !confirmedIds.has(i.id));
+  const doneItems = shoppingItems.filter(i => confirmedIds.has(i.id));
 
   return (
     <Layout>
@@ -93,9 +157,9 @@ export default function ShoppingListScreen() {
               <div>
                 <h2 className="font-semibold text-sm">Itens para Repor</h2>
                 <p className="text-xs opacity-80">
-                  {uncheckedCount === 0
+                  {activeItems.length === 0
                     ? "Tudo comprado!"
-                    : `${uncheckedCount} ${uncheckedCount === 1 ? 'item pendente' : 'itens pendentes'}`}
+                    : `${activeItems.length} ${activeItems.length === 1 ? 'item pendente' : 'itens pendentes'}`}
                 </p>
               </div>
             </div>
@@ -103,13 +167,15 @@ export default function ShoppingListScreen() {
               <motion.div
                 className="bg-white rounded-full h-2"
                 initial={{ width: 0 }}
-                animate={{ width: shoppingItems.length > 0 ? `${(checkedCount / shoppingItems.length) * 100}%` : '0%' }}
+                animate={{ width: shoppingItems.length > 0 ? `${(doneItems.length / shoppingItems.length) * 100}%` : '0%' }}
                 transition={{ duration: 0.4, ease: "easeOut" }}
               />
             </div>
           </div>
 
-          {shoppingItems.length === 0 ? (
+          {isLoading ? (
+            <div className="text-center py-8 text-[#8B9286]">Carregando...</div>
+          ) : shoppingItems.length === 0 ? (
             <div className="text-center py-12">
               <div className="w-16 h-16 mx-auto mb-4 bg-[#E8EBE5] rounded-full flex items-center justify-center">
                 <Check size={28} className="text-[#648D4A]" />
@@ -120,17 +186,19 @@ export default function ShoppingListScreen() {
           ) : (
             <div className="space-y-3">
               <AnimatePresence mode="popLayout">
-                {shoppingItems
+                {[...activeItems, ...doneItems]
                   .sort((a, b) => {
-                    const isAChecked = checkedItems.has(a.id);
-                    const isBChecked = checkedItems.has(b.id);
-                    if (isAChecked !== isBChecked) return isAChecked ? 1 : -1;
+                    const aD = confirmedIds.has(a.id);
+                    const bD = confirmedIds.has(b.id);
+                    if (aD !== bD) return aD ? 1 : -1;
                     if (a.status === 'critical' && b.status !== 'critical') return -1;
                     if (a.status !== 'critical' && b.status === 'critical') return 1;
                     return 0;
                   })
                   .map((item) => {
-                    const isChecked = checkedItems.has(item.id);
+                    const isDone = confirmedIds.has(item.id);
+                    const isConfirming = confirmingId === item.id;
+
                     return (
                       <motion.div
                         key={item.id}
@@ -138,65 +206,125 @@ export default function ShoppingListScreen() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9 }}
-                        className={`bg-white p-4 rounded-2xl border shadow-sm flex items-center gap-4 transition-colors ${
-                          isChecked ? 'border-[#648D4A]/30 opacity-60' : 'border-[#E8EBE5]'
+                        className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-colors ${
+                          isDone ? 'border-[#648D4A]/30 opacity-60' : 'border-[#E8EBE5]'
                         }`}
                         data-testid={`card-shopping-item-${item.id}`}
                       >
-                        <button
-                          onClick={() => toggleItem(item.id)}
-                          className={`w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                            isChecked
-                              ? 'bg-[#648D4A] border-[#648D4A]'
-                              : 'border-[#C7CFC2] bg-transparent'
-                          }`}
-                          data-testid={`button-toggle-item-${item.id}`}
-                        >
-                          {isChecked && <Check size={14} className="text-white" strokeWidth={3} />}
-                        </button>
+                        <div className="p-4 flex items-center gap-3">
+                          {isDone ? (
+                            <div className="w-7 h-7 rounded-full bg-[#648D4A] flex items-center justify-center shrink-0">
+                              <Check size={14} className="text-white" strokeWidth={3} />
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl bg-[#FAFBF8] border border-[#E8EBE5] flex items-center justify-center text-xl shrink-0">
+                              {item.image || "📦"}
+                            </div>
+                          )}
 
-                        <div className="w-10 h-10 rounded-xl bg-[#FAFBF8] border border-[#E8EBE5] flex items-center justify-center text-xl shrink-0">
-                          {item.image}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h3 className={`font-semibold text-sm ${isDone ? 'line-through text-[#8B9286]' : 'text-[#2F5641]'}`}>
+                                  {item.name}
+                                </h3>
+                                <p className="text-xs text-[#8B9286]">
+                                  Restam {formatQuantity(item.quantityG, item.unit)}
+                                </p>
+                              </div>
+                              {!isDone && (
+                                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md text-white shrink-0 ${getStatusColor(item.status)}`}>
+                                  {getStatusLabel(item.status)}
+                                </span>
+                              )}
+                            </div>
+
+                            {!isDone && !isConfirming && (
+                              <div className="flex items-center justify-between mt-3">
+                                <span className="text-[11px] text-[#8B9286]">Comprar:</span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => updateBuyQty(item.id, -1, item)}
+                                    className="w-7 h-7 rounded-lg bg-[#F0F2ED] border border-[#E8EBE5] flex items-center justify-center text-[#2F5641]"
+                                    data-testid={`button-decrease-${item.id}`}
+                                  >
+                                    <Minus size={14} />
+                                  </button>
+                                  <span className="text-sm font-bold text-[#2F5641] min-w-[40px] text-center" data-testid={`text-quantity-${item.id}`}>
+                                    {getBuyQty(item)} {getBuyUnit(item.unit)}
+                                  </span>
+                                  <button
+                                    onClick={() => updateBuyQty(item.id, 1, item)}
+                                    className="w-7 h-7 rounded-lg bg-[#2F5641] flex items-center justify-center text-white"
+                                    data-testid={`button-increase-${item.id}`}
+                                  >
+                                    <Plus size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h3 className={`font-semibold text-sm ${isChecked ? 'line-through text-[#8B9286]' : 'text-[#2F5641]'}`}>
-                                {item.name}
-                              </h3>
-                              <p className="text-xs text-[#8B9286]">{item.category} • Restam {item.quantity}</p>
-                            </div>
-                            <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md text-white shrink-0 ${getStatusColor(item.status)}`}>
-                              {getStatusLabel(item.status)}
-                            </span>
-                          </div>
+                        {!isDone && !isConfirming && (
+                          <button
+                            onClick={() => handleBuyClick(item)}
+                            className="w-full py-3 bg-[#F0F2ED] border-t border-[#E8EBE5] text-[#2F5641] text-xs font-semibold uppercase tracking-wide flex items-center justify-center gap-2 active:bg-[#E8EBE5] transition-colors"
+                            data-testid={`button-buy-${item.id}`}
+                          >
+                            <ShoppingBag size={14} />
+                            Comprei
+                          </button>
+                        )}
 
-                          <div className="flex items-center justify-between mt-3">
-                            <span className="text-[11px] text-[#8B9286]">Qtd. a comprar:</span>
-                            <div className="flex items-center gap-2">
+                        {isConfirming && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            className="border-t border-[#E8EBE5] bg-[#FAFBF8] p-4 space-y-3"
+                          >
+                            <p className="text-xs text-[#2F5641] font-semibold">Quanto comprou de fato?</p>
+                            <div className="flex items-center justify-center gap-3">
                               <button
-                                onClick={() => updateQuantity(item.id, -1)}
-                                disabled={isChecked}
-                                className="w-7 h-7 rounded-lg bg-[#F0F2ED] border border-[#E8EBE5] flex items-center justify-center text-[#2F5641] disabled:opacity-30"
-                                data-testid={`button-decrease-${item.id}`}
+                                onClick={() => setConfirmQty(q => Math.max(1, q - 1))}
+                                className="w-9 h-9 rounded-lg bg-white border border-[#E8EBE5] flex items-center justify-center text-[#2F5641]"
                               >
-                                <Minus size={14} />
+                                <Minus size={16} />
                               </button>
-                              <span className="text-sm font-bold text-[#2F5641] w-6 text-center" data-testid={`text-quantity-${item.id}`}>
-                                {quantities[item.id] || 1}
+                              <span className="text-lg font-bold text-[#2F5641] min-w-[60px] text-center">
+                                {confirmQty} {getBuyUnit(item.unit)}
                               </span>
                               <button
-                                onClick={() => updateQuantity(item.id, 1)}
-                                disabled={isChecked}
-                                className="w-7 h-7 rounded-lg bg-[#2F5641] flex items-center justify-center text-white disabled:opacity-30"
-                                data-testid={`button-increase-${item.id}`}
+                                onClick={() => setConfirmQty(q => q + 1)}
+                                className="w-9 h-9 rounded-lg bg-[#2F5641] flex items-center justify-center text-white"
                               >
-                                <Plus size={14} />
+                                <Plus size={16} />
                               </button>
                             </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setConfirmingId(null)}
+                                className="flex-1 py-2.5 rounded-xl border border-[#E8EBE5] text-xs font-semibold text-[#8B9286]"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={() => handleConfirm(item)}
+                                disabled={purchaseMutation.isPending}
+                                className="flex-1 py-2.5 rounded-xl bg-[#648D4A] text-white text-xs font-semibold disabled:opacity-50"
+                                data-testid={`button-confirm-${item.id}`}
+                              >
+                                {purchaseMutation.isPending ? "Salvando..." : "Confirmar"}
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {isDone && (
+                          <div className="px-4 pb-3">
+                            <p className="text-[10px] text-[#648D4A] font-medium">Estoque atualizado automaticamente</p>
                           </div>
-                        </div>
+                        )}
                       </motion.div>
                     );
                   })}

@@ -151,8 +151,13 @@ export const foodStock = pgTable(
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: uuid("user_id").notNull().references(() => users.id),
-    foodId: uuid("food_id").notNull().references(() => foods.id),
+    foodId: uuid("food_id").references(() => foods.id),
+    name: text("name").notNull().default(""),
+    category: text("category").notNull().default("Outros"),
+    unit: text("unit").notNull().default("g"),
     quantityG: real("quantity_g").notNull().default(0),
+    minQuantityG: real("min_quantity_g").notNull().default(0),
+    image: text("image").default("📦"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     location: text("location"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -162,6 +167,31 @@ export const foodStock = pgTable(
   (t) => [
     index("idx_food_stock_user_id").on(t.userId),
     index("idx_food_stock_updated_at").on(t.updatedAt),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// PURCHASE RECORDS (registros de compras)
+// ---------------------------------------------------------------------------
+export const purchaseRecords = pgTable(
+  "purchase_records",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    foodStockId: uuid("food_stock_id").notNull().references(() => foodStock.id),
+    plannedQuantity: real("planned_quantity").notNull(),
+    actualQuantity: real("actual_quantity").notNull(),
+    unit: text("unit").notNull().default("un"),
+    status: text("status").notNull().default("pending"),
+    purchasedAt: timestamp("purchased_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("idx_purchase_user_id").on(t.userId),
+    index("idx_purchase_stock_id").on(t.foodStockId),
+    index("idx_purchase_updated_at").on(t.updatedAt),
   ]
 );
 
@@ -266,6 +296,13 @@ export const insertFoodStockSchema = createInsertSchema(foodStock).omit({
   deletedAt: true,
 });
 
+export const insertPurchaseRecordSchema = createInsertSchema(purchaseRecords).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  deletedAt: true,
+});
+
 export const insertHydrationRecordSchema = createInsertSchema(hydrationRecords).omit({
   id: true,
   createdAt: true,
@@ -317,6 +354,9 @@ export type Food = typeof foods.$inferSelect;
 
 export type InsertFoodStock = z.infer<typeof insertFoodStockSchema>;
 export type FoodStock = typeof foodStock.$inferSelect;
+
+export type InsertPurchaseRecord = z.infer<typeof insertPurchaseRecordSchema>;
+export type PurchaseRecord = typeof purchaseRecords.$inferSelect;
 
 export type InsertHydrationRecord = z.infer<typeof insertHydrationRecordSchema>;
 export type HydrationRecord = typeof hydrationRecords.$inferSelect;

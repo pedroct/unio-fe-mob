@@ -1,6 +1,6 @@
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { foods, users } from "@shared/schema";
+import { foods, users, foodStock } from "@shared/schema";
 
 const SEED_FOODS = [
   { name: "Peito de Frango Grelhado", servingSizeG: 100, caloriesKcal: 165, proteinG: 31, carbsG: 0, fatG: 3.6, fiberG: 0, sodiumMg: 74 },
@@ -34,13 +34,34 @@ async function seed() {
     console.log(`Inserted ${SEED_FOODS.length} food items.`);
   }
 
+  let defaultUserId: string;
   const existingUsers = await db.select().from(users);
   if (existingUsers.length === 0) {
-    await db.insert(users).values({
+    const [u] = await db.insert(users).values({
       username: "default_user",
       displayName: "Usuário UNIO",
-    });
+    }).returning();
+    defaultUserId = u.id;
     console.log("Created default user.");
+  } else {
+    defaultUserId = existingUsers[0].id;
+  }
+
+  const existingStock = await db.select().from(foodStock);
+  if (existingStock.length === 0) {
+    await db.insert(foodStock).values([
+      { userId: defaultUserId, name: "Whey Protein", category: "Suplementos", unit: "g", quantityG: 200, minQuantityG: 900, image: "⚡" },
+      { userId: defaultUserId, name: "Arroz Basmati", category: "Grãos", unit: "kg", quantityG: 2000, minQuantityG: 2000, image: "🍚" },
+      { userId: defaultUserId, name: "Peito de Frango", category: "Proteínas", unit: "kg", quantityG: 3000, minQuantityG: 2000, image: "🍗" },
+      { userId: defaultUserId, name: "Azeite de Oliva", category: "Gorduras", unit: "ml", quantityG: 50, minQuantityG: 500, image: "🫒" },
+      { userId: defaultUserId, name: "Aveia em Flocos", category: "Grãos", unit: "g", quantityG: 500, minQuantityG: 1000, image: "🥣" },
+      { userId: defaultUserId, name: "Creatina", category: "Suplementos", unit: "g", quantityG: 300, minQuantityG: 300, image: "💪" },
+      { userId: defaultUserId, name: "Banana Prata", category: "Frutas", unit: "un", quantityG: 6, minQuantityG: 12, image: "🍌" },
+      { userId: defaultUserId, name: "Ovos", category: "Proteínas", unit: "un", quantityG: 30, minQuantityG: 30, image: "🥚" },
+    ]);
+    console.log("Inserted pantry stock items.");
+  } else {
+    console.log(`Food stock already has ${existingStock.length} entries. Skipping.`);
   }
 
   await pool.end();
