@@ -1,7 +1,7 @@
 import Layout from "@/components/layout";
-import { ChevronLeft, Plus, Minus, Droplets, History, Settings, Coffee, GlassWater, Wine, X, Calendar, Clock } from "lucide-react";
+import { ChevronLeft, Plus, History, Settings, Coffee, GlassWater, Wine, X, Calendar, Clock, Mic, Delete } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function HydrationScreen() {
@@ -15,8 +15,9 @@ export default function HydrationScreen() {
   ]);
 
   const [showManualInput, setShowManualInput] = useState(false);
-  const [manualAmount, setManualAmount] = useState(250);
+  const [manualAmount, setManualAmount] = useState("600");
   const [manualType, setManualType] = useState("water");
+  const [manualDate, setManualDate] = useState(new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }));
   const [manualTime, setManualTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 
   const percentage = Math.min((intake / goal) * 100, 100);
@@ -24,8 +25,12 @@ export default function HydrationScreen() {
   const BEVERAGE_TYPES = [
     { id: "water", label: "Água", icon: GlassWater, color: "#3D7A8C" },
     { id: "coffee", label: "Café", icon: Coffee, color: "#8C6A3D" },
-    { id: "juice", label: "Suco", icon: Wine, color: "#D97952" }, // Using Wine icon as generic glass
-    { id: "tea", label: "Chá", icon: Coffee, color: "#648D4A" },
+    { id: "juice", label: "Suco", icon: Wine, color: "#D97952" },
+    { id: "milk", label: "Leite desnatado", icon: Coffee, color: "#E8EBE5" }, // Using generic icon
+    { id: "sport", label: "Bebida esportiva", icon: GlassWater, color: "#648D4A" },
+    { id: "shake", label: "Milkshake de proteínas", icon: Coffee, color: "#2F5641" },
+    { id: "tea", label: "Chá", icon: Coffee, color: "#C7AE6A" },
+    { id: "soda", label: "Refrigerante", icon: Wine, color: "#BE4E35" },
   ];
 
   const addWater = (amount: number, type: string = "water", label: string = "Água", time: string = "") => {
@@ -35,14 +40,28 @@ export default function HydrationScreen() {
   };
 
   const handleManualSubmit = () => {
+    const amount = parseInt(manualAmount);
+    if (isNaN(amount) || amount <= 0) return;
+
     const typeObj = BEVERAGE_TYPES.find(t => t.id === manualType) || BEVERAGE_TYPES[0];
-    addWater(manualAmount, manualType, typeObj.label, manualTime);
+    addWater(amount, manualType, typeObj.label, manualTime);
     setShowManualInput(false);
+    setManualAmount("250"); // Reset
+  };
+
+  const handleKeypadPress = (key: string) => {
+    if (key === "backspace") {
+      setManualAmount(prev => prev.slice(0, -1) || "0");
+    } else if (key === "clear") {
+      setManualAmount("0");
+    } else {
+      setManualAmount(prev => (prev === "0" ? key : prev + key));
+    }
   };
 
   const getIconForType = (type: string) => {
     const t = BEVERAGE_TYPES.find(item => item.id === type);
-    return t ? t.icon : Droplets;
+    return t ? t.icon : GlassWater;
   };
 
   const getColorForType = (type: string) => {
@@ -182,98 +201,112 @@ export default function HydrationScreen() {
           </section>
         </main>
 
-        {/* Manual Input Modal */}
+        {/* Manual Input Modal - FULL SCREEN OVERLAY to match design */}
         <AnimatePresence>
           {showManualInput && (
-            <>
-              <motion.div 
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
-                onClick={() => setShowManualInput(false)}
-              />
-              <motion.div 
-                initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 z-50 max-w-[430px] mx-auto pb-32"
-              >
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="font-display text-xl font-semibold text-[#2F5641]">Registro Manual</h2>
-                  <button 
-                    onClick={() => setShowManualInput(false)}
-                    className="w-8 h-8 rounded-full bg-[#F5F3EE] flex items-center justify-center text-[#8B9286]"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
+            <motion.div 
+              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed inset-0 bg-[#F5F7FA] z-50 flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className="px-6 pt-14 pb-4 flex items-center justify-between">
+                <button className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-[#2F5641] shadow-sm">
+                   <Mic size={20} />
+                </button>
+                <h2 className="text-lg font-bold text-[#2F5641]">Outras bebidas</h2>
+                <button 
+                  onClick={() => setShowManualInput(false)}
+                  className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-[#2F5641] shadow-sm"
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
-                {/* Amount Input */}
-                <div className="mb-6">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-2 block">Quantidade (ml)</label>
-                  <div className="flex items-center gap-4">
-                    <button 
-                      onClick={() => setManualAmount(prev => Math.max(0, prev - 50))}
-                      className="w-10 h-10 rounded-full border border-[#E8EBE5] flex items-center justify-center text-[#2F5641]"
-                    >
-                      <Minus size={16} />
-                    </button>
-                    <div className="flex-1 text-center">
-                      <span className="font-display text-4xl font-bold text-[#2F5641]">{manualAmount}</span>
-                      <span className="text-sm text-[#8B9286] ml-1">ml</span>
+              {/* Main Display Area */}
+              <div className="flex-1 flex flex-col items-center justify-start pt-8 pb-4">
+                 <div className="text-center mb-8">
+                    <div className="flex items-baseline justify-center gap-1">
+                       <span className="font-display text-6xl font-bold text-[#2F5641] tracking-tight">{manualAmount}</span>
+                       <span className="text-2xl font-semibold text-[#2F5641] opacity-60">ml</span>
                     </div>
-                    <button 
-                      onClick={() => setManualAmount(prev => prev + 50)}
-                      className="w-10 h-10 rounded-full border border-[#E8EBE5] flex items-center justify-center text-[#2F5641]"
-                    >
-                      <Plus size={16} />
-                    </button>
-                  </div>
-                </div>
+                    <p className="text-[#8B9286] font-medium mt-1">
+                      {BEVERAGE_TYPES.find(t => t.id === manualType)?.label || "Selecione"}
+                    </p>
+                 </div>
 
-                {/* Beverage Type Selection */}
-                <div className="mb-6">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-2 block">Bebida</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {BEVERAGE_TYPES.map((type) => (
-                      <button
-                        key={type.id}
-                        onClick={() => setManualType(type.id)}
-                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all ${
-                          manualType === type.id 
-                            ? "bg-[#FAFBF8] border-[#2F5641] ring-1 ring-[#2F5641]" 
-                            : "bg-white border-[#E8EBE5] opacity-60"
-                        }`}
+                 {/* Wheel Picker Simulation */}
+                 <div className="w-full relative h-[200px] overflow-hidden mb-6 mask-gradient-y">
+                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-12 bg-[#E8EBE5]/50 rounded-xl mx-6 -z-10" />
+                    
+                    <div className="h-full overflow-y-auto snap-y snap-mandatory py-[80px] px-6 scrollbar-hide">
+                       {BEVERAGE_TYPES.map((type) => (
+                         <div 
+                           key={type.id}
+                           onClick={() => setManualType(type.id)}
+                           className={`h-10 flex items-center justify-center gap-3 snap-center cursor-pointer transition-all duration-300 ${manualType === type.id ? 'opacity-100 scale-110 font-bold text-[#2F5641]' : 'opacity-30 scale-90 text-[#8B9286]'}`}
+                         >
+                            <type.icon size={18} />
+                            <span>{type.label}</span>
+                         </div>
+                       ))}
+                    </div>
+                 </div>
+
+                 {/* Date/Time Selectors */}
+                 <div className="flex gap-3 mb-6 px-6 w-full max-w-[320px]">
+                    <button className="flex-1 bg-white py-3 px-4 rounded-xl shadow-sm text-sm font-semibold text-[#2F5641] flex items-center justify-center gap-2">
+                       <Calendar size={16} className="opacity-50" />
+                       {manualDate}
+                    </button>
+                    <button className="flex-1 bg-white py-3 px-4 rounded-xl shadow-sm text-sm font-semibold text-[#2F5641] flex items-center justify-center gap-2">
+                       <Clock size={16} className="opacity-50" />
+                       {manualTime}
+                    </button>
+                 </div>
+
+                 {/* Numeric Keypad */}
+                 <div className="w-full max-w-[320px] px-4 grid grid-cols-3 gap-2 mb-6">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                      <button 
+                        key={num}
+                        onClick={() => handleKeypadPress(num.toString())}
+                        className="h-12 bg-white rounded-lg shadow-sm text-xl font-semibold text-[#2F5641] active:bg-gray-50 active:scale-95 transition-transform"
                       >
-                        <type.icon size={20} color={type.color} />
-                        <span className="text-[10px] font-medium text-[#2F5641]">{type.label}</span>
+                        {num}
                       </button>
                     ))}
-                  </div>
-                </div>
+                    <button 
+                      onClick={() => handleKeypadPress("00")}
+                      className="h-12 bg-white rounded-lg shadow-sm text-xl font-semibold text-[#2F5641] active:bg-gray-50 active:scale-95 transition-transform"
+                    >
+                      00
+                    </button>
+                    <button 
+                      onClick={() => handleKeypadPress("0")}
+                      className="h-12 bg-white rounded-lg shadow-sm text-xl font-semibold text-[#2F5641] active:bg-gray-50 active:scale-95 transition-transform"
+                    >
+                      0
+                    </button>
+                    <button 
+                      onClick={() => handleKeypadPress("backspace")}
+                      className="h-12 bg-white rounded-lg shadow-sm flex items-center justify-center text-[#BE4E35] active:bg-gray-50 active:scale-95 transition-transform"
+                    >
+                      <Delete size={20} />
+                    </button>
+                 </div>
+              </div>
 
-                {/* Time Input */}
-                <div className="mb-8">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-2 block">Horário</label>
-                  <div className="bg-[#FAFBF8] border border-[#E8EBE5] rounded-xl p-3 flex items-center gap-3">
-                    <Clock size={16} className="text-[#8B9286]" />
-                    <input 
-                      type="time" 
-                      value={manualTime}
-                      onChange={(e) => setManualTime(e.target.value)}
-                      className="bg-transparent text-sm font-semibold text-[#2F5641] outline-none w-full"
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-8">
-                  <button 
-                    onClick={handleManualSubmit}
-                    className="w-full bg-[#2F5641] text-white py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-[#2F5641]/20 active:scale-[0.98] transition-all"
-                  >
-                    Confirmar Registro
-                  </button>
-                </div>
-              </motion.div>
-            </>
+              {/* Action Button */}
+              <div className="px-6 pb-8">
+                <button 
+                  onClick={handleManualSubmit}
+                  className="w-full bg-[#4A90E2] text-white py-4 rounded-full font-bold text-lg shadow-lg shadow-[#4A90E2]/30 active:scale-[0.98] transition-all"
+                >
+                  Adicionar
+                </button>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
