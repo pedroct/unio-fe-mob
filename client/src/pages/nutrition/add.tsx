@@ -8,24 +8,26 @@ import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
-interface UnifiedFoodItem {
-  id: string;
-  tipo_id: string;
-  descricao: string;
-  marca: string | null;
+interface AlimentoItem {
+  id: number;
+  nome: string;
+  marca: string;
   codigo_barras: string | null;
-  fonte_dados: "LEGADO" | "TBCA";
-  grupo: string | null;
-  resumo_macros_100g: {
-    calorias: number;
-    carboidratos: number;
-    proteinas: number;
-    gorduras: number;
-    fibras: number | null;
-  };
+  calorias: number;
+  carboidratos: number;
+  proteinas: number;
+  gorduras: number;
+  fibras: number;
+  unidade_medida: string;
 }
 
-type FonteFilter = "TODOS" | "TBCA" | "LEGADO";
+interface RefeicaoItem {
+  id: number;
+  nome: string;
+  horario_lembrete: string | null;
+  ordem: number;
+  ativa: boolean;
+}
 
 export default function NutritionAddScreen() {
   const [, setLocation] = useLocation();
@@ -34,38 +36,36 @@ export default function NutritionAddScreen() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [fonteFilter, setFonteFilter] = useState<FonteFilter>("TODOS");
   const [showScanner, setShowScanner] = useState(false);
-  const [selectedFood, setSelectedFood] = useState<UnifiedFoodItem | null>(null);
+  const [selectedFood, setSelectedFood] = useState<AlimentoItem | null>(null);
   const [quantity, setQuantity] = useState(100);
 
   const params = new URLSearchParams(window.location.search);
-  const mealSlot = params.get("slot") || "breakfast";
-
-  const SLOT_NAMES: Record<string, string> = {
-    breakfast: "Café da Manhã",
-    lunch: "Almoço",
-    snack: "Lanche da Tarde",
-    dinner: "Jantar",
-  };
+  const refeicaoIdParam = params.get("refeicao_id");
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  const { data: searchResult, isLoading: foodsLoading } = useQuery<{
-    itens: UnifiedFoodItem[];
-    total: number;
-  }>({
-    queryKey: ["nutricao", "alimentos", "buscar", debouncedSearch, fonteFilter],
+  const { data: refeicoes } = useQuery<RefeicaoItem[]>({
+    queryKey: ["nutricao", "refeicoes"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/nutricao/refeicoes");
+      if (!res.ok) throw new Error("Erro ao buscar refeições");
+      return res.json();
+    },
+    enabled: !!user,
+  });
+
+  const refeicaoAtual = refeicoes?.find(r => String(r.id) === refeicaoIdParam) || refeicoes?.[0];
+
+  const { data: foods = [], isLoading: foodsLoading } = useQuery<AlimentoItem[]>({
+    queryKey: ["nutricao", "alimentos", "buscar", debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set("q", debouncedSearch);
       params.set("limite", "30");
-      if (fonteFilter !== "TODOS") {
-        params.set("fonte", fonteFilter);
-      }
       const res = await apiFetch(`/api/nutricao/alimentos/buscar?${params.toString()}`);
       if (!res.ok) throw new Error("Erro ao buscar alimentos");
       return res.json();
@@ -73,34 +73,29 @@ export default function NutritionAddScreen() {
     enabled: !!user,
   });
 
-  const foods = searchResult?.itens || [];
-
   const addMutation = useMutation({
-    mutationFn: async (food: UnifiedFoodItem) => {
-      const body: any = {
+    mutationFn: async (food: AlimentoItem) => {
+      const body: Record<string, unknown> = {
+        alimento_id: food.id,
         quantidade: quantity,
-        meal_slot: mealSlot,
-        origem: food.fonte_dados === "TBCA" ? "TBCA" : "MANUAL",
       };
-      if (food.fonte_dados === "TBCA") {
-        body.alimento_tbca_id = food.id;
-      } else {
-        body.alimento_id = food.id;
+      if (refeicaoAtual) {
+        body.refeicao_id = refeicaoAtual.id;
       }
-      const res = await apiFetch("/api/nutricao/diario/registrar-avancado", {
+      const res = await apiFetch("/api/nutricao/diario/registrar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Erro ao adicionar alimento.");
+        throw new Error(data.mensagem || data.detail || "Erro ao adicionar alimento.");
       }
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["nutricao", "resumo-hoje"] });
-      toast({ title: "Alimento adicionado", description: `${selectedFood?.descricao} adicionado ao ${SLOT_NAMES[mealSlot]}` });
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["nutricao"] });
+      toast({ title: "Alimento adicionado", description: data.mensagem || `${selectedFood?.nome} registrado` });
       setSelectedFood(null);
       setQuantity(100);
     },
@@ -109,21 +104,15 @@ export default function NutritionAddScreen() {
     },
   });
 
-  const calcStats = (food: UnifiedFoodItem, qty: number) => {
+  const calcStats = (food: AlimentoItem, qty: number) => {
     const ratio = qty / 100;
     return {
-      kcal: Math.round(food.resumo_macros_100g.calorias * ratio),
-      protein: Math.round(food.resumo_macros_100g.proteinas * ratio * 10) / 10,
-      carbs: Math.round(food.resumo_macros_100g.carboidratos * ratio * 10) / 10,
-      fat: Math.round(food.resumo_macros_100g.gorduras * ratio * 10) / 10,
+      kcal: Math.round(food.calorias * ratio),
+      protein: Math.round(food.proteinas * ratio * 10) / 10,
+      carbs: Math.round(food.carboidratos * ratio * 10) / 10,
+      fat: Math.round(food.gorduras * ratio * 10) / 10,
     };
   };
-
-  const FONTE_TABS: { value: FonteFilter; label: string }[] = [
-    { value: "TODOS", label: "Todos" },
-    { value: "TBCA", label: "TBCA" },
-    { value: "LEGADO", label: "Meus Alimentos" },
-  ];
 
   return (
     <Layout>
@@ -160,28 +149,13 @@ export default function NutritionAddScreen() {
         </header>
 
         <main className="px-6 pt-2">
-          <div className="mb-4">
-            <p className="text-xs font-medium text-[#8B9286] uppercase tracking-wider">
-              Adicionando ao: <span className="text-[#2F5641] font-semibold">{SLOT_NAMES[mealSlot] || mealSlot}</span>
-            </p>
-          </div>
-
-          <div className="flex gap-2 mb-4" data-testid="filter-fonte-tabs">
-            {FONTE_TABS.map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => setFonteFilter(tab.value)}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                  fonteFilter === tab.value
-                    ? "bg-[#2F5641] text-white"
-                    : "bg-white border border-[#E8EBE5] text-[#8B9286]"
-                }`}
-                data-testid={`button-filter-${tab.value.toLowerCase()}`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          {refeicaoAtual && (
+            <div className="mb-4">
+              <p className="text-xs font-medium text-[#8B9286] uppercase tracking-wider">
+                Adicionando ao: <span className="text-[#2F5641] font-semibold">{refeicaoAtual.nome}</span>
+              </p>
+            </div>
+          )}
 
           {foodsLoading ? (
             <div className="py-12 text-center">
@@ -202,18 +176,16 @@ export default function NutritionAddScreen() {
                 >
                   <div className="text-left">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-[#2F5641]">{food.descricao}</h3>
-                      {food.fonte_dados === "TBCA" ? (
-                        <span className="text-[9px] px-1.5 py-0.5 bg-[#648D4A]/15 text-[#648D4A] rounded font-semibold" data-testid={`badge-fonte-${food.id}`}>TBCA</span>
-                      ) : (
-                        <span className="text-[9px] px-1.5 py-0.5 bg-[#8B9286]/10 text-[#8B9286] rounded font-medium" data-testid={`badge-fonte-${food.id}`}>Legado</span>
+                      <h3 className="font-semibold text-[#2F5641] text-sm">{food.nome}</h3>
+                      {food.marca && (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-[#8B9286]/10 text-[#8B9286] rounded font-medium">{food.marca}</span>
                       )}
                     </div>
-                    <p className="text-xs text-[#8B9286] mt-0.5">100g • {Math.round(food.resumo_macros_100g.calorias)} kcal</p>
+                    <p className="text-xs text-[#8B9286] mt-0.5">100{food.unidade_medida?.toLowerCase() || "g"} · {Math.round(food.calorias)} kcal</p>
                     <div className="flex gap-2 mt-2">
-                      <span className="text-[10px] px-1.5 py-0.5 bg-[#648D4A]/10 text-[#648D4A] rounded">P: {food.resumo_macros_100g.proteinas}g</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-[#D97952]/10 text-[#D97952] rounded">C: {food.resumo_macros_100g.carboidratos}g</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-[#C7AE6A]/10 text-[#C7AE6A] rounded">G: {food.resumo_macros_100g.gorduras}g</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-[#648D4A]/10 text-[#648D4A] rounded">P: {food.proteinas}g</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-[#D97952]/10 text-[#D97952] rounded">C: {food.carboidratos}g</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-[#C7AE6A]/10 text-[#C7AE6A] rounded">G: {food.gorduras}g</span>
                     </div>
                   </div>
                   <div className="w-8 h-8 rounded-full bg-[#FAFBF8] flex items-center justify-center text-[#C7AE6A] group-hover:bg-[#C7AE6A] group-hover:text-white transition-colors">
@@ -244,11 +216,9 @@ export default function NutritionAddScreen() {
               >
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-display text-lg font-semibold text-[#2F5641]">{selectedFood.descricao}</h3>
-                    {selectedFood.fonte_dados === "TBCA" ? (
-                      <span className="text-[9px] px-1.5 py-0.5 bg-[#648D4A]/15 text-[#648D4A] rounded font-semibold">TBCA</span>
-                    ) : (
-                      <span className="text-[9px] px-1.5 py-0.5 bg-[#8B9286]/10 text-[#8B9286] rounded font-medium">Legado</span>
+                    <h3 className="font-display text-lg font-semibold text-[#2F5641]">{selectedFood.nome}</h3>
+                    {selectedFood.marca && (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-[#8B9286]/10 text-[#8B9286] rounded font-medium">{selectedFood.marca}</span>
                     )}
                   </div>
                   <button onClick={() => setSelectedFood(null)} className="text-[#8B9286]">
@@ -318,7 +288,7 @@ export default function NutritionAddScreen() {
                   ) : (
                     <>
                       <Check size={18} />
-                      Adicionar ao {SLOT_NAMES[mealSlot]}
+                      Adicionar{refeicaoAtual ? ` ao ${refeicaoAtual.nome}` : ""}
                     </>
                   )}
                 </button>

@@ -87,6 +87,28 @@ All endpoints are served by `https://staging.unio.tec.br` and proxied through th
 - Frontend routes: `/training`, `/training/plans/:planoId`, `/training/exercises`, `/training/sessions`, `/training/player/:planoId`
 - React Query keys: `["treino","planos"]`, `["treino","plano",planoId]`, `["treino","exercicios"]`, `["treino","sessoes",inicio,fim]`
 
+#### Nutrição (Diário Alimentar)
+- `GET /api/nutricao/resumo-hoje` — JWT required, daily summary → `ResumoHojeSchema {data, consumido: MacrosSchema, meta: MacrosSemFibraSchema, saldo, percentual_meta, total_registros, calculo: {tmb, get, deficit_aplicado}}`
+- `GET /api/nutricao/meta-calorica` — JWT required, detailed caloric goal → `{tmb, get, meta_calorias, deficit_aplicado, meta_proteinas, meta_carboidratos, meta_gorduras, fator_atividade_usado, fonte_dados}`
+- `POST /api/nutricao/meta-calorica/recalcular` — Recalculate caloric goal
+- `GET /api/nutricao/refeicoes` — JWT required, list meals → `RefeicaoSchema[] {id: int, nome, horario_lembrete, ordem, ativa}`
+- `POST /api/nutricao/refeicoes` — Create meal `{nome, horario_lembrete?, ordem?}`
+- `POST /api/nutricao/refeicoes/criar-padrao` — Create default meals
+- `GET /api/nutricao/alimentos/buscar?q=&limite=20` — Search foods → `AlimentoSchema[] {id: int, nome, marca, codigo_barras, calorias, carboidratos, proteinas, gorduras, fibras, unidade_medida}`
+- `GET /api/nutricao/alimentos/codigo-barras/{codigo}` — Barcode lookup → `AlimentoSchema`
+- `POST /api/nutricao/alimentos` — Create custom food `{nome, calorias, carboidratos?, proteinas?, gorduras?, fibras?, marca?, codigo_barras?, unidade_medida?}`
+- `POST /api/nutricao/diario/registrar` — Register food intake `{alimento_id: int, quantidade: number, refeicao_id?: int, data_consumo?: datetime, observacao?}` → `{id, alimento_nome, quantidade, calorias_consumidas, mensagem}`
+- `GET /api/nutricao/diario/registros?data=YYYY-MM-DD` — List daily records → `RegistroAlimentarSchema[] {id, alimento: AlimentoSchema, refeicao: RefeicaoSchema|null, quantidade, data_consumo, origem, observacao, calorias_consumidas, carboidratos_consumidos, proteinas_consumidas, gorduras_consumidas, fibras_consumidas}`
+- `DELETE /api/nutricao/diario/registros/{registro_id}` — Delete record
+- `POST /api/nutricao/diario/balanca-cozinha` — Register via kitchen scale
+- `GET /api/nutricao/diario/pesagens-pendentes` — Pending scale weighings
+- `POST /api/nutricao/diario/pesagens-pendentes/{pesagem_id}/associar` — Associate weighing to food
+- `DELETE /api/nutricao/diario/pesagens-pendentes/{pesagem_id}` — Discard weighing
+- TBCA endpoints: `/api/nutricao/tbca/alimentos`, `/api/nutricao/tbca/grupos`, `/api/nutricao/tbca/nutrientes`, `/api/nutricao/tbca/tipos`, `/api/nutricao/tbca/calcular`
+- MacrosSchema: `{calorias, carboidratos, proteinas, gorduras, fibras?}`
+- Frontend routes: `/nutrition`, `/nutrition/add`
+- React Query keys: `["nutricao","resumo-hoje"]`, `["nutricao","refeicoes"]`, `["nutricao","diario","registros"]`, `["nutricao","alimentos","buscar",query]`
+
 #### Suplementação
 - `GET /api/nutricao/suplementacao/protocolos` — List supplement protocols
 - `POST /api/nutricao/suplementacao/protocolos` — Create protocol
