@@ -34,11 +34,17 @@ Preferred communication style: Simple, everyday language.
 - **Runtime:** Node.js with Express 5
 - **Language:** TypeScript, compiled with tsx for development and esbuild for production
 - **API Pattern:** RESTful JSON API under `/api/*` prefix
-- **Authentication:** Email/password auth with bcrypt + express-session + connect-pg-simple (PostgreSQL session store)
-  - Auth endpoints: POST /api/auth/register, /api/auth/login, /api/auth/logout, GET /api/auth/me
-  - All data routes protected with `requireAuth` middleware
-  - User-scoped routes enforce `req.session.userId` ownership checks
-  - AuthProvider context in `client/src/lib/auth.tsx` with route guards in App.tsx
+- **Authentication:** Production-grade JWT with access tokens (10min) + refresh tokens (14 days, HttpOnly cookie)
+  - **server/auth.ts** — Token generation, verification, rotation, session management
+  - Auth endpoints: POST /api/auth/register, /api/auth/login, /api/auth/logout, /api/auth/logout-all, /api/auth/refresh, GET /api/auth/me
+  - Access token stored in-memory on frontend (never localStorage), refresh token in HttpOnly cookie scoped to /api/auth/refresh
+  - Atomic refresh token rotation: old token revoked in DB transaction before new one created
+  - `requireAuth` middleware validates JWT signature + expiry + tokenVersion (DB check) for instant revocation
+  - Rate limiting: 5 attempts/min per IP+email for login, 10/min per IP for refresh
+  - Audit fields: lastLoginAt, failedLoginAttempts, lastLoginIp, lastLoginUserAgent
+  - `auth_sessions` table stores hashed refresh tokens with device info and expiry
+  - **client/src/lib/api.ts** — `apiFetch()` auto-attaches Bearer token, handles 401 with single-queue refresh pattern
+  - AuthProvider context in `client/src/lib/auth.tsx` boots via refresh cookie, stores access token in memory
 - **Validation:** Zod schemas (generated from Drizzle schemas via `drizzle-zod`) for request validation
 - **Error Handling:** Centralized Zod error formatter using `zod-validation-error`
 
@@ -48,7 +54,8 @@ Preferred communication style: Simple, everyday language.
 - **Schema Location:** `shared/schema.ts` — shared between client and server
 - **Migrations:** Drizzle Kit with `drizzle-kit push` for schema sync
 - **Tables:**
-  - `users` — User profiles (UUID primary keys, soft delete)
+  - `users` — User profiles (UUID primary keys, soft delete, audit fields for auth)
+  - `auth_sessions` — JWT refresh token sessions (hashed tokens, device info, expiry)
   - `body_records` — Weight/body composition measurements
   - `foods` — Nutritional database (per-serving macro data)
   - `food_stock` — Pantry inventory tracking
@@ -97,4 +104,4 @@ Preferred communication style: Simple, everyday language.
 - **Xiaomi Mi Scale 2** — Target BLE hardware for biometrics (currently mocked)
 - **Replit Plugins** — `@replit/vite-plugin-runtime-error-modal`, `@replit/vite-plugin-cartographer`, `@replit/vite-plugin-dev-banner` for development experience
 - **shadcn/ui** — Full Radix UI primitive set installed (dialog, dropdown, tabs, toast, etc.)
-- **connect-pg-simple** — PostgreSQL session store (available but not fully wired for auth yet)
+- **jsonwebtoken** — JWT access/refresh token generation and verification

@@ -121,7 +121,7 @@ export async function incrementTokenVersion(userId: string): Promise<number> {
   return updated.tokenVersion;
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Token de acesso ausente." });
@@ -129,32 +129,27 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
   const token = authHeader.slice(7);
 
+  let payload: JwtPayload;
   try {
-    const payload = verifyAccessToken(token);
-    (req as any).userId = payload.userId;
-    (req as any).tokenVersion = payload.tokenVersion;
-    next();
+    payload = verifyAccessToken(token);
   } catch (err: any) {
     if (err.name === "TokenExpiredError") {
       return res.status(401).json({ error: "Token expirado.", code: "TOKEN_EXPIRED" });
     }
     return res.status(401).json({ error: "Token inválido.", code: "TOKEN_INVALID" });
   }
-}
-
-export async function validateTokenVersion(req: Request, res: Response, next: NextFunction) {
-  const userId = (req as any).userId;
-  const tokenVersion = (req as any).tokenVersion;
 
   const [user] = await db
     .select({ tokenVersion: users.tokenVersion })
     .from(users)
-    .where(eq(users.id, userId));
+    .where(eq(users.id, payload.userId));
 
-  if (!user || user.tokenVersion !== tokenVersion) {
+  if (!user || user.tokenVersion !== payload.tokenVersion) {
     return res.status(401).json({ error: "Sessão revogada.", code: "SESSION_REVOKED" });
   }
 
+  (req as any).userId = payload.userId;
+  (req as any).tokenVersion = payload.tokenVersion;
   next();
 }
 
