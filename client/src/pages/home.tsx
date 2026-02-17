@@ -45,6 +45,22 @@ export default function HomeScreen() {
     retry: 1,
   });
 
+  const { data: planosData, isError: planosError } = useQuery<{
+    itens: { id: number; nome: string; objetivo: string; ativo: boolean; atualizado_em: string }[];
+    total_itens: number;
+  }>({
+    queryKey: ["treino", "planos"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/treino/planos");
+      if (!res.ok) throw new Error("Erro");
+      return res.json();
+    },
+    enabled: !!userId,
+    retry: 1,
+  });
+
+  const planoAtivo = planosData?.itens?.find(p => p.ativo) || planosData?.itens?.[0];
+
   const { data: estadoBio } = useQuery<{
     ultima_leitura: {
       peso_kg: number;
@@ -275,33 +291,46 @@ export default function HomeScreen() {
         </section>
 
         {/* Workout of the Day */}
-        <section className="bg-[#2F5641] rounded-2xl p-5 text-white shadow-lg shadow-[#2F5641]/20 relative overflow-hidden">
+        <section
+          onClick={() => setLocation(planoAtivo ? `/training/plans/${planoAtivo.id}` : "/training")}
+          className="bg-[#2F5641] rounded-2xl p-5 text-white shadow-lg shadow-[#2F5641]/20 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+        >
           <div className="absolute top-0 right-0 p-4 opacity-10">
             <Dumbbell size={80} />
           </div>
           
           <div className="relative z-10">
-            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#648D4A] mb-1">Treino do Dia</h2>
-            <h3 className="font-display text-xl mb-4">Superior: Força & Hipertrofia A</h3>
-            
-            <div className="flex items-center gap-4 mb-5">
-              <div>
-                <span className="block text-lg font-bold">55</span>
-                <span className="text-[10px] opacity-70 uppercase">Minutos</span>
-              </div>
-              <div className="w-[1px] h-8 bg-white/20" />
-              <div>
-                <span className="block text-lg font-bold">8</span>
-                <span className="text-[10px] opacity-70 uppercase">Exercícios</span>
-              </div>
-            </div>
-            
-            <button 
-              onClick={() => setLocation("/training/details")}
-              className="w-full bg-[#C7AE6A] text-white py-3 rounded-xl font-semibold text-sm shadow-md hover:bg-[#D5BD95] transition-colors flex items-center justify-center gap-2"
-            >
-              Iniciar Treino <ChevronRight size={16} />
-            </button>
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#648D4A] mb-1">Treino</h2>
+            {planosError || !planoAtivo ? (
+              <>
+                <h3 className="font-display text-xl mb-4" data-testid="text-training-card">Crie seu primeiro plano</h3>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setLocation("/training"); }}
+                  className="w-full bg-[#C7AE6A] text-white py-3 rounded-xl font-semibold text-sm shadow-md hover:bg-[#D5BD95] transition-colors flex items-center justify-center gap-2"
+                  data-testid="button-go-training"
+                >
+                  Ver Treinos <ChevronRight size={16} />
+                </button>
+              </>
+            ) : (
+              <>
+                <h3 className="font-display text-xl mb-2" data-testid="text-training-card">{planoAtivo.nome}</h3>
+                {planoAtivo.objetivo && (
+                  <p className="text-xs opacity-70 mb-4">{planoAtivo.objetivo}</p>
+                )}
+                <div className="flex items-center gap-3 mb-5">
+                  <span className="text-[10px] px-2 py-0.5 bg-[#648D4A] rounded-full font-bold uppercase">Ativo</span>
+                  <span className="text-[10px] opacity-60">{planosData?.total_itens ?? 0} plano(s)</span>
+                </div>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setLocation(`/training/player/${planoAtivo.id}`); }}
+                  className="w-full bg-[#C7AE6A] text-white py-3 rounded-xl font-semibold text-sm shadow-md hover:bg-[#D5BD95] transition-colors flex items-center justify-center gap-2"
+                  data-testid="button-start-training"
+                >
+                  Iniciar Treino <ChevronRight size={16} />
+                </button>
+              </>
+            )}
           </div>
         </section>
 

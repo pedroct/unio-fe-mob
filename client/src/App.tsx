@@ -18,7 +18,9 @@ import NutritionScreen from "@/pages/nutrition";
 import NutritionAddScreen from "@/pages/nutrition/add";
 import NutritionScaleScreen from "@/pages/nutrition/scale";
 import TrainingScreen from "@/pages/training";
-import TrainingDetailsScreen from "@/pages/training/details";
+import TrainingPlanDetailScreen from "@/pages/training/plan-detail";
+import TrainingExercisesScreen from "@/pages/training/exercises";
+import TrainingSessionsScreen from "@/pages/training/sessions";
 import TrainingPlayerScreen from "@/pages/training/player";
 import SupplementsScreen from "@/pages/supplements";
 import PantryScreen from "@/pages/pantry";
@@ -59,8 +61,10 @@ function Router() {
       <Route path="/hydration">{() => <ProtectedRoute component={HydrationScreen} />}</Route>
 
       <Route path="/training">{() => <ProtectedRoute component={TrainingScreen} />}</Route>
-      <Route path="/training/details">{() => <ProtectedRoute component={TrainingDetailsScreen} />}</Route>
-      <Route path="/training/player">{() => <ProtectedRoute component={TrainingPlayerScreen} />}</Route>
+      <Route path="/training/plans/:planoId">{() => <ProtectedRoute component={TrainingPlanDetailScreen} />}</Route>
+      <Route path="/training/exercises">{() => <ProtectedRoute component={TrainingExercisesScreen} />}</Route>
+      <Route path="/training/sessions">{() => <ProtectedRoute component={TrainingSessionsScreen} />}</Route>
+      <Route path="/training/player/:planoId">{() => <ProtectedRoute component={TrainingPlayerScreen} />}</Route>
 
       <Route path="/biometrics">{() => <ProtectedRoute component={BiometricsScreen} />}</Route>
       <Route path="/biometrics/devices">{() => <ProtectedRoute component={BiometricsDevicesScreen} />}</Route>

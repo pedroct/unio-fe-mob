@@ -67,6 +67,26 @@ All endpoints are served by `https://staging.unio.tec.br` and proxied through th
 - Valid beverage types: `AGUA`, `SUCO`, `CAFE`, `CHA`, `LEITE`, `ISOTONICO`, `OUTRO`
 - Errors: 422 `{errors: [{field, message}]}`, 403 access denied, 404 not found
 
+#### Treino
+- `GET /api/treino/exercicios` — List exercises (global + user custom) → `{itens: Exercicio[], total_itens}`
+- `POST /api/treino/exercicios` — Create custom exercise `{nome, grupo_muscular?, observacoes?}` → created exercise
+- `POST /api/treino/planos` — Create plan `{nome, objetivo?}` → created plan
+- `GET /api/treino/planos` — List user plans → `{itens: Plano[], total_itens}`
+- `GET /api/treino/planos/{plano_id}` — Plan detail with items array
+- `PATCH /api/treino/planos/{plano_id}` — Update plan (partial body)
+- `DELETE /api/treino/planos/{plano_id}` — Remove plan → `{id, removido, mensagem}`
+- `POST /api/treino/planos/{plano_id}/itens` — Add exercise to plan `{exercicio_id, ordem?, series?, repeticoes?, descanso_segundos?, carga_kg?, observacoes?}`
+- `PATCH /api/treino/itens/{item_id}` — Update plan item (partial body)
+- `DELETE /api/treino/itens/{item_id}` — Remove plan item → `{id, removido, mensagem}`
+- `POST /api/treino/sessoes` — Create session `{plano_id?, iniciado_em, concluida, observacoes?}`
+- `GET /api/treino/sessoes?inicio=&fim=` — List sessions by date range (default: today)
+- `GET /api/treino/sessoes/{sessao_id}` — Session detail
+- `PATCH /api/treino/sessoes/{sessao_id}` — Update session (concluir, duração)
+- `DELETE /api/treino/sessoes/{sessao_id}` — Remove session
+- `carga_kg` is decimal string (e.g. "60.00"), IDs are integers
+- Frontend routes: `/training`, `/training/plans/:planoId`, `/training/exercises`, `/training/sessions`, `/training/player/:planoId`
+- React Query keys: `["treino","planos"]`, `["treino","plano",planoId]`, `["treino","exercicios"]`, `["treino","sessoes",inicio,fim]`
+
 #### Suplementação
 - `GET /api/nutricao/suplementacao/protocolos` — List supplement protocols
 - `POST /api/nutricao/suplementacao/protocolos` — Create protocol
