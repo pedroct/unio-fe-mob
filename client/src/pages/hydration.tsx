@@ -277,7 +277,7 @@ export default function HydrationScreen() {
 
                 <div className="w-full relative h-[140px] overflow-hidden mb-4 shrink-0">
                   <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-10 bg-[#E8EBE5]/50 rounded-xl mx-6 -z-10" />
-                  <div className="h-full overflow-y-auto snap-y snap-mandatory py-[50px] px-6 scrollbar-hide">
+                  <div className="h-full overflow-y-auto snap-y snap-mandatory py-[50px] px-6" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {BEVERAGE_TYPES.map((type) => (
                       <div
                         key={type.id}

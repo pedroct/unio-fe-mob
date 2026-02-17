@@ -78,7 +78,7 @@ export default function PantryScreen() {
 
           {/* Filters */}
           <div className="relative">
-            <div className="flex gap-2 overflow-x-auto px-1 py-1 scrollbar-hide">
+            <div className="flex gap-2 overflow-x-auto px-1 py-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               {["Todos", "Proteínas", "Grãos", "Suplementos", "Gorduras"].map((cat) => (
                 <button
                   key={cat}
