@@ -9,6 +9,7 @@ import {
   insertBodyRecordSchema,
   insertGoalSchema,
   insertFoodSchema,
+  insertMealEntrySchema,
   insertFoodStockSchema,
   insertPurchaseRecordSchema,
   insertHydrationRecordSchema,
@@ -303,8 +304,16 @@ export async function registerRoutes(
   // ── Body Records ──
   app.get("/api/users/:userId/body-records", requireAuth, async (req, res) => {
     if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
-    const records = await storage.getBodyRecordsByUser(req.params.userId);
+    const range = req.query.range as string | undefined;
+    const records = await storage.getBodyRecordsByUserWithRange(req.params.userId, range);
     res.json(records);
+  });
+
+  app.get("/api/users/:userId/body-records/latest", requireAuth, async (req, res) => {
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
+    const record = await storage.getLatestBodyRecord(req.params.userId);
+    if (!record) return res.json(null);
+    res.json(record);
   });
 
   app.get("/api/body-records/:id", requireAuth, async (req, res) => {
@@ -413,6 +422,61 @@ export async function registerRoutes(
 
   app.delete("/api/foods/:id", requireAuth, async (req, res) => {
     await storage.softDeleteFood(req.params.id);
+    res.status(204).end();
+  });
+
+  // ── Meal Entries ──
+  app.get("/api/users/:userId/meals", requireAuth, async (req, res) => {
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
+    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+    const entries = await storage.getMealEntriesByUserDate(req.params.userId, date);
+    res.json(entries);
+  });
+
+  app.get("/api/users/:userId/meals/summary", requireAuth, async (req, res) => {
+    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
+    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+    const summary = await storage.getMealSummaryByUserDate(req.params.userId, date);
+    res.json(summary);
+  });
+
+  app.post("/api/meal-entries", requireAuth, async (req, res) => {
+    try {
+      const data = insertMealEntrySchema.parse({ ...req.body, userId: getUserId(req) });
+      const entry = await storage.createMealEntry(data);
+      res.status(201).json(entry);
+    } catch (err) {
+      const { status, body } = handleZodError(err);
+      res.status(status).json(body);
+    }
+  });
+
+  app.get("/api/meal-entries/:id", requireAuth, async (req, res) => {
+    const entry = await storage.getMealEntry(req.params.id);
+    if (!entry) return res.status(404).json({ error: "Entrada não encontrada." });
+    if (entry.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
+    res.json(entry);
+  });
+
+  app.patch("/api/meal-entries/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getMealEntry(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Entrada não encontrada." });
+      if (existing.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
+      const data = insertMealEntrySchema.partial().parse(req.body);
+      const entry = await storage.updateMealEntry(req.params.id, data);
+      res.json(entry);
+    } catch (err) {
+      const { status, body } = handleZodError(err);
+      res.status(status).json(body);
+    }
+  });
+
+  app.delete("/api/meal-entries/:id", requireAuth, async (req, res) => {
+    const existing = await storage.getMealEntry(req.params.id);
+    if (!existing) return res.status(404).json({ error: "Entrada não encontrada." });
+    if (existing.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
+    await storage.softDeleteMealEntry(req.params.id);
     res.status(204).end();
   });
 

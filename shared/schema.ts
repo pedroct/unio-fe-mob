@@ -104,6 +104,10 @@ export const bodyRecords = pgTable(
     weightKg: real("weight_kg").notNull(),
     fatPercent: real("fat_percent"),
     muscleMassKg: real("muscle_mass_kg"),
+    waterPercent: real("water_percent"),
+    boneMassKg: real("bone_mass_kg"),
+    visceralFat: real("visceral_fat"),
+    bmr: real("bmr"),
     bmi: real("bmi"),
     impedance: real("impedance"),
     source: text("source").notNull().default("manual"),
@@ -168,6 +172,29 @@ export const foods = pgTable(
   (t) => [
     index("idx_foods_updated_at").on(t.updatedAt),
     index("idx_foods_barcode").on(t.barcode),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// MEAL ENTRIES (diário alimentar)
+// ---------------------------------------------------------------------------
+export const mealEntries = pgTable(
+  "meal_entries",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    foodId: uuid("food_id").notNull().references(() => foods.id),
+    mealSlot: text("meal_slot").notNull(),
+    quantityG: real("quantity_g").notNull().default(100),
+    unit: text("unit").notNull().default("g"),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("idx_meal_entries_user_date").on(t.userId, t.consumedAt),
+    index("idx_meal_entries_updated_at").on(t.updatedAt),
   ]
 );
 
@@ -317,6 +344,13 @@ export const insertFoodSchema = createInsertSchema(foods).omit({
   deletedAt: true,
 });
 
+export const insertMealEntrySchema = createInsertSchema(mealEntries).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  deletedAt: true,
+});
+
 export const insertFoodStockSchema = createInsertSchema(foodStock).omit({
   id: true,
   createdAt: true,
@@ -379,6 +413,9 @@ export type Goal = typeof goals.$inferSelect;
 
 export type InsertFood = z.infer<typeof insertFoodSchema>;
 export type Food = typeof foods.$inferSelect;
+
+export type InsertMealEntry = z.infer<typeof insertMealEntrySchema>;
+export type MealEntry = typeof mealEntries.$inferSelect;
 
 export type InsertFoodStock = z.infer<typeof insertFoodStockSchema>;
 export type FoodStock = typeof foodStock.$inferSelect;

@@ -1,59 +1,79 @@
 import Layout from "@/components/layout";
-import { ChevronLeft, Calendar, Search, ScanBarcode, Plus, Flame, ChevronRight, Package, Scale } from "lucide-react";
+import { ChevronLeft, Calendar, Plus, Package, Scale, Trash2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 
-// Mock Data
-const MEALS = [
-  {
-    id: "breakfast",
-    name: "Café da Manhã",
-    calories: 420,
-    items: [
-      { name: "Ovos Mexidos", portion: "2 grandes", kcal: 180 },
-      { name: "Pão Integral", portion: "2 fatias", kcal: 140 },
-      { name: "Café Preto", portion: "200ml", kcal: 5 },
-      { name: "Mamão Papaia", portion: "1/2 unidade", kcal: 95 }
-    ]
-  },
-  {
-    id: "lunch",
-    name: "Almoço",
-    calories: 650,
-    items: [
-      { name: "Frango Grelhado", portion: "150g", kcal: 240 },
-      { name: "Arroz Branco", portion: "100g", kcal: 130 },
-      { name: "Feijão Carioca", portion: "1 concha", kcal: 110 },
-      { name: "Salada Verde", portion: "à vontade", kcal: 20 },
-      { name: "Azeite de Oliva", portion: "1 col. sopa", kcal: 120 }
-    ]
-  },
-  {
-    id: "snack",
-    name: "Lanche da Tarde",
-    calories: 0,
-    items: []
-  },
-  {
-    id: "dinner",
-    name: "Jantar",
-    calories: 0,
-    items: []
-  }
+const MEAL_SLOTS = [
+  { id: "breakfast", name: "Café da Manhã" },
+  { id: "lunch", name: "Almoço" },
+  { id: "snack", name: "Lanche da Tarde" },
+  { id: "dinner", name: "Jantar" },
 ];
+
+const CALORIE_GOAL = 2200;
+const PROTEIN_GOAL = 160;
+const CARBS_GOAL = 200;
+const FAT_GOAL = 70;
 
 export default function NutritionScreen() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data: summary, isLoading } = useQuery<{
+    totalCalories: number;
+    totalProtein: number;
+    totalCarbs: number;
+    totalFat: number;
+    meals: Record<string, {
+      items: Array<{
+        id: string;
+        foodId: string;
+        mealSlot: string;
+        quantityG: number;
+        food: { name: string; servingSizeG: number; caloriesKcal: number; proteinG: number; carbsG: number; fatG: number };
+      }>;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+    }>;
+  }>({
+    queryKey: [`/api/users/${user?.id}/meals/summary`, `?date=${today}`],
+    enabled: !!user,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (entryId: string) => {
+      await apiFetch(`/api/meal-entries/${entryId}`, { method: "DELETE" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/users/${user?.id}/meals/summary`] });
+    },
+  });
+
+  const available = CALORIE_GOAL - (summary?.totalCalories || 0);
+  const proteinPct = Math.min(100, ((summary?.totalProtein || 0) / PROTEIN_GOAL) * 100);
+  const carbsPct = Math.min(100, ((summary?.totalCarbs || 0) / CARBS_GOAL) * 100);
+  const fatPct = Math.min(100, ((summary?.totalFat || 0) / FAT_GOAL) * 100);
+
+  function itemKcal(item: any) {
+    const ratio = item.quantityG / (item.food.servingSizeG || 100);
+    return Math.round(item.food.caloriesKcal * ratio);
+  }
 
   return (
     <Layout>
       <div className="bg-[#FAFBF8] min-h-screen pb-24">
-        {/* Header */}
         <header className="px-6 pt-14 pb-4 flex items-center justify-between sticky top-0 bg-[#FAFBF8]/80 backdrop-blur-md z-10">
-          <button 
+          <button
             onClick={() => setLocation("/home")}
             className="w-10 h-10 -ml-2 flex items-center justify-center text-[#2F5641]"
+            data-testid="button-back"
           >
             <ChevronLeft size={24} />
           </button>
@@ -64,83 +84,74 @@ export default function NutritionScreen() {
         </header>
 
         <main className="px-6 space-y-6">
-          {/* Summary Card */}
           <section className="bg-[#2F5641] rounded-3xl p-6 text-white shadow-lg shadow-[#2F5641]/20">
-             <div className="flex justify-between items-end mb-6">
-               <div>
-                 <p className="text-xs font-medium opacity-80 uppercase tracking-wider mb-1">Calorias Disponíveis</p>
-                 <h2 className="font-display text-4xl font-semibold">780 <span className="text-lg font-sans font-medium opacity-60">kcal</span></h2>
-               </div>
-               <div className="text-right">
-                  <p className="text-xs font-medium opacity-80 uppercase tracking-wider mb-1">Consumido</p>
-                  <p className="font-semibold text-lg">1.420 / 2.200</p>
-               </div>
-             </div>
+            <div className="flex justify-between items-end mb-6">
+              <div>
+                <p className="text-xs font-medium opacity-80 uppercase tracking-wider mb-1">Calorias Disponíveis</p>
+                <h2 className="font-display text-4xl font-semibold" data-testid="text-calories-available">
+                  {isLoading ? "..." : available} <span className="text-lg font-sans font-medium opacity-60">kcal</span>
+                </h2>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-medium opacity-80 uppercase tracking-wider mb-1">Consumido</p>
+                <p className="font-semibold text-lg" data-testid="text-calories-consumed">
+                  {isLoading ? "..." : `${summary?.totalCalories || 0} / ${CALORIE_GOAL}`}
+                </p>
+              </div>
+            </div>
 
-             {/* Macro Bars */}
-             <div className="space-y-4">
-               {/* Protein */}
-               <div>
-                 <div className="flex justify-between text-xs font-medium mb-1.5">
-                   <span className="text-[#EFECB6]">Proteína</span>
-                   <span>92g / 160g</span>
-                 </div>
-                 <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-                   <div className="h-full bg-[#EFECB6] rounded-full" style={{ width: '57%' }} />
-                 </div>
-               </div>
-               
-               {/* Carbs */}
-               <div>
-                 <div className="flex justify-between text-xs font-medium mb-1.5">
-                   <span className="text-[#D97952]">Carboidratos</span>
-                   <span>120g / 200g</span>
-                 </div>
-                 <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-                   <div className="h-full bg-[#D97952] rounded-full" style={{ width: '60%' }} />
-                 </div>
-               </div>
-
-               {/* Fat */}
-               <div>
-                 <div className="flex justify-between text-xs font-medium mb-1.5">
-                   <span className="text-[#C7AE6A]">Gorduras</span>
-                   <span>45g / 70g</span>
-                 </div>
-                 <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-                   <div className="h-full bg-[#C7AE6A] rounded-full" style={{ width: '64%' }} />
-                 </div>
-               </div>
-             </div>
-          </section>
-
-          {/* Quick Stats Grid */}
-          <section className="mb-6">
-            <div className="grid grid-cols-2 gap-3">
-              <div 
-                onClick={() => setLocation("/pantry")}
-                className="bg-[#2F5641] rounded-2xl p-4 text-white shadow-lg shadow-[#2F5641]/20 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
-              >
-                <div className="absolute top-0 right-0 p-3 opacity-10">
-                  <Package size={48} />
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-xs font-medium mb-1.5">
+                  <span className="text-[#EFECB6]">Proteína</span>
+                  <span>{Math.round(summary?.totalProtein || 0)}g / {PROTEIN_GOAL}g</span>
                 </div>
-                <div className="relative z-10">
-                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center mb-3 backdrop-blur-sm">
-                    <Package size={16} />
-                  </div>
-                  <h3 className="font-display text-lg mb-0.5">Despensa</h3>
-                  <p className="text-[10px] opacity-80 uppercase tracking-wider font-medium">2 itens críticos</p>
+                <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#EFECB6] rounded-full transition-all" style={{ width: `${proteinPct}%` }} />
                 </div>
               </div>
+              <div>
+                <div className="flex justify-between text-xs font-medium mb-1.5">
+                  <span className="text-[#D97952]">Carboidratos</span>
+                  <span>{Math.round(summary?.totalCarbs || 0)}g / {CARBS_GOAL}g</span>
+                </div>
+                <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#D97952] rounded-full transition-all" style={{ width: `${carbsPct}%` }} />
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-xs font-medium mb-1.5">
+                  <span className="text-[#C7AE6A]">Gorduras</span>
+                  <span>{Math.round(summary?.totalFat || 0)}g / {FAT_GOAL}g</span>
+                </div>
+                <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#C7AE6A] rounded-full transition-all" style={{ width: `${fatPct}%` }} />
+                </div>
+              </div>
+            </div>
+          </section>
 
-              <div 
+          <section className="mb-6">
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                onClick={() => setLocation("/pantry")}
+                className="bg-[#2F5641] rounded-2xl p-4 text-white shadow-lg shadow-[#2F5641]/20 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+                data-testid="link-pantry"
+              >
+                <div className="absolute top-0 right-0 p-3 opacity-10"><Package size={48} /></div>
+                <div className="relative z-10">
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center mb-3 backdrop-blur-sm"><Package size={16} /></div>
+                  <h3 className="font-display text-lg mb-0.5">Despensa</h3>
+                  <p className="text-[10px] opacity-80 uppercase tracking-wider font-medium">Gerenciar estoque</p>
+                </div>
+              </div>
+              <div
                 className="bg-white rounded-2xl p-4 shadow-sm border border-[#E8EBE5] relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
                 onClick={() => setLocation("/nutrition/scale")}
+                data-testid="link-scale"
               >
                 <div className="flex justify-between items-start mb-2">
-                  <div className="w-8 h-8 rounded-full bg-[#FAFBF8] flex items-center justify-center text-[#2F5641]">
-                    <Scale size={16} />
-                  </div>
+                  <div className="w-8 h-8 rounded-full bg-[#FAFBF8] flex items-center justify-center text-[#2F5641]"><Scale size={16} /></div>
                   <span className="text-[10px] font-bold text-[#648D4A] bg-[#648D4A]/10 px-2 py-1 rounded-lg">Online</span>
                 </div>
                 <h3 className="font-display text-sm text-[#2F5641]">Balança</h3>
@@ -149,67 +160,74 @@ export default function NutritionScreen() {
             </div>
           </section>
 
-          {/* Meals List */}
           <div className="space-y-4">
-             {MEALS.map((meal) => (
-               <div key={meal.id} className="bg-white rounded-2xl border border-[#E8EBE5] overflow-hidden shadow-sm">
-                 {/* Meal Header */}
-                 <div className="p-4 flex items-center justify-between bg-[#F5F3EE]/50">
-                    <h3 className="font-semibold text-[#2F5641]">{meal.name}</h3>
+            {MEAL_SLOTS.map((slot) => {
+              const mealData = summary?.meals?.[slot.id];
+              const items = mealData?.items || [];
+              const mealCalories = mealData?.calories || 0;
+
+              return (
+                <div key={slot.id} className="bg-white rounded-2xl border border-[#E8EBE5] overflow-hidden shadow-sm" data-testid={`card-meal-${slot.id}`}>
+                  <div className="p-4 flex items-center justify-between bg-[#F5F3EE]/50">
+                    <h3 className="font-semibold text-[#2F5641]">{slot.name}</h3>
                     <div className="flex items-center gap-3">
-                       <span className="text-sm font-medium text-[#8B9286]">{meal.calories} kcal</span>
-                       <div className="flex gap-1">
-                          <button 
-                            onClick={() => setLocation("/nutrition/scale")}
-                            className="w-6 h-6 rounded-full bg-[#648D4A] flex items-center justify-center text-white hover:bg-[#52743C] transition-colors"
-                            title="Usar Balança"
-                          >
-                            <Scale size={12} strokeWidth={2.5} />
-                          </button>
-                          <button 
-                            onClick={() => setLocation("/nutrition/add")}
-                            className="w-6 h-6 rounded-full bg-[#C7AE6A] flex items-center justify-center text-white hover:bg-[#AD8C48] transition-colors"
-                            title="Adicionar Manualmente"
-                          >
-                            <Plus size={14} strokeWidth={3} />
-                          </button>
-                       </div>
+                      <span className="text-sm font-medium text-[#8B9286]" data-testid={`text-meal-calories-${slot.id}`}>{mealCalories} kcal</span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setLocation("/nutrition/scale")}
+                          className="w-6 h-6 rounded-full bg-[#648D4A] flex items-center justify-center text-white hover:bg-[#52743C] transition-colors"
+                          title="Usar Balança"
+                        >
+                          <Scale size={12} strokeWidth={2.5} />
+                        </button>
+                        <button
+                          onClick={() => setLocation(`/nutrition/add?slot=${slot.id}`)}
+                          className="w-6 h-6 rounded-full bg-[#C7AE6A] flex items-center justify-center text-white hover:bg-[#AD8C48] transition-colors"
+                          title="Adicionar Manualmente"
+                          data-testid={`button-add-${slot.id}`}
+                        >
+                          <Plus size={14} strokeWidth={3} />
+                        </button>
+                      </div>
                     </div>
-                 </div>
+                  </div>
 
-                 {/* Meal Items */}
-                 {meal.items.length > 0 ? (
-                   <div className="px-4 pb-4 pt-1">
-                     {meal.items.map((item, idx) => (
-                       <div key={idx} className="flex justify-between py-3 border-b border-[#E8EBE5] last:border-0">
-                         <div>
-                           <p className="text-sm font-medium text-[#5F6B5A]">{item.name}</p>
-                           <p className="text-xs text-[#8B9286]">{item.portion}</p>
-                         </div>
-                         <span className="text-sm font-semibold text-[#2F5641]">{item.kcal}</span>
-                       </div>
-                     ))}
-                   </div>
-                 ) : (
-                   <div className="px-4 py-6 text-center">
-                     <p className="text-xs text-[#8B9286] mb-3">Nenhum alimento registrado</p>
-                     <button 
-                       onClick={() => setLocation("/nutrition/add")}
-                       className="text-xs font-semibold text-[#C7AE6A] uppercase tracking-wider hover:underline"
-                     >
-                       Adicionar Alimentos
-                     </button>
-                   </div>
-                 )}
-               </div>
-             ))}
+                  {items.length > 0 ? (
+                    <div className="px-4 pb-4 pt-1">
+                      {items.map((item: any) => (
+                        <div key={item.id} className="flex justify-between items-center py-3 border-b border-[#E8EBE5] last:border-0" data-testid={`row-meal-item-${item.id}`}>
+                          <div>
+                            <p className="text-sm font-medium text-[#5F6B5A]">{item.food.name}</p>
+                            <p className="text-xs text-[#8B9286]">{item.quantityG}g</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-semibold text-[#2F5641]">{itemKcal(item)}</span>
+                            <button
+                              onClick={() => deleteMutation.mutate(item.id)}
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-[#BE4E35] hover:bg-[#BE4E35]/10 transition-colors"
+                              data-testid={`button-delete-${item.id}`}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-6 text-center">
+                      <p className="text-xs text-[#8B9286] mb-3">Nenhum alimento registrado</p>
+                      <button
+                        onClick={() => setLocation(`/nutrition/add?slot=${slot.id}`)}
+                        className="text-xs font-semibold text-[#C7AE6A] uppercase tracking-wider hover:underline"
+                      >
+                        Adicionar Alimentos
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-
-          {/* Create Meal Button (if needed) */}
-          <button className="w-full py-4 border-2 border-dashed border-[#C7AE6A] rounded-2xl flex flex-col items-center justify-center gap-2 text-[#C7AE6A] hover:bg-[#C7AE6A]/5 transition-colors">
-            <span className="font-semibold text-sm">Criar nova refeição</span>
-          </button>
-
         </main>
       </div>
     </Layout>

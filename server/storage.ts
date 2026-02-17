@@ -6,6 +6,7 @@ import {
   bodyRecords,
   goals,
   foods,
+  mealEntries,
   foodStock,
   purchaseRecords,
   hydrationRecords,
@@ -20,6 +21,8 @@ import {
   type InsertGoal,
   type Food,
   type InsertFood,
+  type MealEntry,
+  type InsertMealEntry,
   type FoodStock,
   type InsertFoodStock,
   type PurchaseRecord,
@@ -34,6 +37,7 @@ const SYNC_TABLES = {
   body_records: bodyRecords,
   goals,
   foods,
+  meal_entries: mealEntries,
   food_stock: foodStock,
   purchase_records: purchaseRecords,
   hydration_records: hydrationRecords,
@@ -90,6 +94,22 @@ export interface IStorage {
   getPurchaseHistoryByUser(userId: string): Promise<PurchaseRecord[]>;
   confirmPurchase(purchaseId: string, actualQuantity: number): Promise<{ purchase: PurchaseRecord; stock: FoodStock }>;
   confirmAllPurchases(userId: string, items: Array<{ purchaseId: string; actualQuantity: number }>): Promise<{ confirmed: number }>;
+
+  getMealEntry(id: string): Promise<MealEntry | undefined>;
+  getMealEntriesByUserDate(userId: string, date: string): Promise<(MealEntry & { food: Food })[]>;
+  getMealSummaryByUserDate(userId: string, date: string): Promise<{
+    totalCalories: number;
+    totalProtein: number;
+    totalCarbs: number;
+    totalFat: number;
+    meals: Record<string, { items: (MealEntry & { food: Food })[]; calories: number; protein: number; carbs: number; fat: number }>;
+  }>;
+  createMealEntry(entry: InsertMealEntry): Promise<MealEntry>;
+  updateMealEntry(id: string, data: Partial<InsertMealEntry>): Promise<MealEntry | undefined>;
+  softDeleteMealEntry(id: string): Promise<void>;
+
+  getBodyRecordsByUserWithRange(userId: string, range?: string): Promise<BodyRecord[]>;
+  getLatestBodyRecord(userId: string): Promise<BodyRecord | undefined>;
 
   createHydrationRecord(record: InsertHydrationRecord): Promise<HydrationRecord>;
   getHydrationByUserToday(userId: string): Promise<HydrationRecord[]>;
@@ -408,6 +428,125 @@ export class DatabaseStorage implements IStorage {
     return { confirmed };
   }
 
+  // ── Meal Entries ──
+  async getMealEntry(id: string): Promise<MealEntry | undefined> {
+    const [e] = await db.select().from(mealEntries).where(and(eq(mealEntries.id, id), notDeleted(mealEntries)));
+    return e;
+  }
+
+  async getMealEntriesByUserDate(userId: string, date: string): Promise<(MealEntry & { food: Food })[]> {
+    const dayStart = new Date(date + "T00:00:00.000Z");
+    const dayEnd = new Date(date + "T23:59:59.999Z");
+
+    const rows = await db
+      .select({ entry: mealEntries, food: foods })
+      .from(mealEntries)
+      .innerJoin(foods, eq(mealEntries.foodId, foods.id))
+      .where(
+        and(
+          eq(mealEntries.userId, userId),
+          gte(mealEntries.consumedAt, dayStart),
+          lt(mealEntries.consumedAt, dayEnd),
+          notDeleted(mealEntries)
+        )
+      )
+      .orderBy(asc(mealEntries.consumedAt));
+
+    return rows.map((r) => ({ ...r.entry, food: r.food }));
+  }
+
+  async getMealSummaryByUserDate(userId: string, date: string) {
+    const entries = await this.getMealEntriesByUserDate(userId, date);
+
+    const meals: Record<string, { items: (MealEntry & { food: Food })[]; calories: number; protein: number; carbs: number; fat: number }> = {};
+    let totalCalories = 0;
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFat = 0;
+
+    for (const entry of entries) {
+      const ratio = entry.quantityG / (entry.food.servingSizeG || 100);
+      const kcal = Math.round(entry.food.caloriesKcal * ratio);
+      const prot = Math.round(entry.food.proteinG * ratio * 10) / 10;
+      const carbs = Math.round(entry.food.carbsG * ratio * 10) / 10;
+      const fat = Math.round(entry.food.fatG * ratio * 10) / 10;
+
+      totalCalories += kcal;
+      totalProtein += prot;
+      totalCarbs += carbs;
+      totalFat += fat;
+
+      if (!meals[entry.mealSlot]) {
+        meals[entry.mealSlot] = { items: [], calories: 0, protein: 0, carbs: 0, fat: 0 };
+      }
+      meals[entry.mealSlot].items.push(entry);
+      meals[entry.mealSlot].calories += kcal;
+      meals[entry.mealSlot].protein += prot;
+      meals[entry.mealSlot].carbs += carbs;
+      meals[entry.mealSlot].fat += fat;
+    }
+
+    return {
+      totalCalories: Math.round(totalCalories),
+      totalProtein: Math.round(totalProtein * 10) / 10,
+      totalCarbs: Math.round(totalCarbs * 10) / 10,
+      totalFat: Math.round(totalFat * 10) / 10,
+      meals,
+    };
+  }
+
+  async createMealEntry(data: InsertMealEntry): Promise<MealEntry> {
+    const [e] = await db.insert(mealEntries).values(data).returning();
+    await this.logSync("meal_entries", e.id, "create", e);
+    return e;
+  }
+
+  async updateMealEntry(id: string, data: Partial<InsertMealEntry>): Promise<MealEntry | undefined> {
+    const [e] = await db
+      .update(mealEntries)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(mealEntries.id, id), notDeleted(mealEntries)))
+      .returning();
+    if (e) await this.logSync("meal_entries", e.id, "update", e);
+    return e;
+  }
+
+  async softDeleteMealEntry(id: string): Promise<void> {
+    const now = new Date();
+    await db.update(mealEntries).set({ deletedAt: now, updatedAt: now }).where(eq(mealEntries.id, id));
+    await this.logSync("meal_entries", id, "delete", null);
+  }
+
+  // ── Body Records (enhanced) ──
+  async getBodyRecordsByUserWithRange(userId: string, range?: string): Promise<BodyRecord[]> {
+    const now = new Date();
+    let since: Date | null = null;
+
+    if (range === "7d") since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    else if (range === "30d") since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    else if (range === "3m") since = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    else if (range === "1y") since = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+    const conditions = [eq(bodyRecords.userId, userId), notDeleted(bodyRecords)];
+    if (since) conditions.push(gte(bodyRecords.measuredAt, since));
+
+    return db
+      .select()
+      .from(bodyRecords)
+      .where(and(...conditions))
+      .orderBy(asc(bodyRecords.measuredAt));
+  }
+
+  async getLatestBodyRecord(userId: string): Promise<BodyRecord | undefined> {
+    const [r] = await db
+      .select()
+      .from(bodyRecords)
+      .where(and(eq(bodyRecords.userId, userId), notDeleted(bodyRecords)))
+      .orderBy(desc(bodyRecords.measuredAt))
+      .limit(1);
+    return r;
+  }
+
   // ── Hydration Records ──
   async createHydrationRecord(data: InsertHydrationRecord): Promise<HydrationRecord> {
     const [r] = await db.insert(hydrationRecords).values(data).returning();
@@ -595,7 +734,7 @@ export class DatabaseStorage implements IStorage {
 
   // ── Helpers ──
   private coerceDates(data: Record<string, any>): Record<string, any> {
-    const DATE_FIELDS = ["createdAt", "updatedAt", "deletedAt", "measuredAt", "expiresAt", "syncedAt", "lastSeenAt", "startDate", "endDate"];
+    const DATE_FIELDS = ["createdAt", "updatedAt", "deletedAt", "measuredAt", "expiresAt", "syncedAt", "lastSeenAt", "startDate", "endDate", "consumedAt"];
     for (const key of DATE_FIELDS) {
       if (key in data && typeof data[key] === "string") {
         data[key] = new Date(data[key]);
