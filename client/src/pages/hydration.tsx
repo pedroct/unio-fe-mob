@@ -255,7 +255,7 @@ export default function HydrationScreen() {
                  </div>
 
                  {/* Bottom Controls Container */}
-                 <div className="mt-auto bg-white rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.03)] pt-6 px-6 pb-8">
+                 <div className="mt-auto bg-white rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.03)] pt-6 px-6 pb-8 w-full max-w-[430px] mx-auto">
                      {/* Date/Time Selectors */}
                      <div className="flex gap-3 mb-4 w-full">
                         <button className="flex-1 bg-[#FAFBF8] border border-[#E8EBE5] py-3 px-2 rounded-xl text-xs font-semibold text-[#2F5641] flex items-center justify-center gap-2">
