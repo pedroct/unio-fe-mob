@@ -16,8 +16,22 @@ const INVENTORY_DATA = [
 export default function ShoppingListScreen() {
   const [, setLocation] = useLocation();
   const [checkedItems, setCheckedItems] = useState<Set<number>>(new Set());
+  const [quantities, setQuantities] = useState<Record<number, number>>(() => {
+    const initial: Record<number, number> = {};
+    INVENTORY_DATA.filter(i => i.status === "low" || i.status === "critical").forEach(i => {
+      initial[i.id] = 1;
+    });
+    return initial;
+  });
 
   const shoppingItems = INVENTORY_DATA.filter(item => item.status === "low" || item.status === "critical");
+
+  const updateQuantity = (id: number, delta: number) => {
+    setQuantities(prev => ({
+      ...prev,
+      [id]: Math.max(1, (prev[id] || 1) + delta),
+    }));
+  };
 
   const toggleItem = (id: number) => {
     setCheckedItems(prev => {
@@ -141,24 +155,47 @@ export default function ShoppingListScreen() {
                           {isChecked && <Check size={14} className="text-white" strokeWidth={3} />}
                         </button>
 
-                        <div className="w-10 h-10 rounded-xl bg-[#FAFBF8] border border-[#E8EBE5] flex items-center justify-center text-xl">
+                        <div className="w-10 h-10 rounded-xl bg-[#FAFBF8] border border-[#E8EBE5] flex items-center justify-center text-xl shrink-0">
                           {item.image}
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h3 className={`font-semibold text-sm ${isChecked ? 'line-through text-[#8B9286]' : 'text-[#2F5641]'}`}>
-                            {item.name}
-                          </h3>
-                          <p className="text-xs text-[#8B9286]">{item.category} • Restam {item.quantity}</p>
-                        </div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h3 className={`font-semibold text-sm ${isChecked ? 'line-through text-[#8B9286]' : 'text-[#2F5641]'}`}>
+                                {item.name}
+                              </h3>
+                              <p className="text-xs text-[#8B9286]">{item.category} • Restam {item.quantity}</p>
+                            </div>
+                            <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md text-white shrink-0 ${getStatusColor(item.status)}`}>
+                              {getStatusLabel(item.status)}
+                            </span>
+                          </div>
 
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md text-white ${getStatusColor(item.status)}`}>
-                            {getStatusLabel(item.status)}
-                          </span>
-                          <span className="text-[10px] text-[#8B9286]">
-                            {getPriorityLabel(item.status)}
-                          </span>
+                          <div className="flex items-center justify-between mt-3">
+                            <span className="text-[11px] text-[#8B9286]">Qtd. a comprar:</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => updateQuantity(item.id, -1)}
+                                disabled={isChecked}
+                                className="w-7 h-7 rounded-lg bg-[#F0F2ED] border border-[#E8EBE5] flex items-center justify-center text-[#2F5641] disabled:opacity-30"
+                                data-testid={`button-decrease-${item.id}`}
+                              >
+                                <Minus size={14} />
+                              </button>
+                              <span className="text-sm font-bold text-[#2F5641] w-6 text-center" data-testid={`text-quantity-${item.id}`}>
+                                {quantities[item.id] || 1}
+                              </span>
+                              <button
+                                onClick={() => updateQuantity(item.id, 1)}
+                                disabled={isChecked}
+                                className="w-7 h-7 rounded-lg bg-[#2F5641] flex items-center justify-center text-white disabled:opacity-30"
+                                data-testid={`button-increase-${item.id}`}
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </motion.div>
                     );
