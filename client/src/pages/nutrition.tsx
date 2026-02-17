@@ -158,12 +158,22 @@ export default function NutritionScreen() {
                     <h3 className="font-semibold text-[#2F5641]">{meal.name}</h3>
                     <div className="flex items-center gap-3">
                        <span className="text-sm font-medium text-[#8B9286]">{meal.calories} kcal</span>
-                       <button 
-                         onClick={() => setLocation("/nutrition/add")}
-                         className="w-6 h-6 rounded-full bg-[#C7AE6A] flex items-center justify-center text-white hover:bg-[#AD8C48] transition-colors"
-                       >
-                         <Plus size={14} strokeWidth={3} />
-                       </button>
+                       <div className="flex gap-1">
+                          <button 
+                            onClick={() => setLocation("/nutrition/scale")}
+                            className="w-6 h-6 rounded-full bg-[#648D4A] flex items-center justify-center text-white hover:bg-[#52743C] transition-colors"
+                            title="Usar Balança"
+                          >
+                            <Scale size={12} strokeWidth={2.5} />
+                          </button>
+                          <button 
+                            onClick={() => setLocation("/nutrition/add")}
+                            className="w-6 h-6 rounded-full bg-[#C7AE6A] flex items-center justify-center text-white hover:bg-[#AD8C48] transition-colors"
+                            title="Adicionar Manualmente"
+                          >
+                            <Plus size={14} strokeWidth={3} />
+                          </button>
+                       </div>
                     </div>
                  </div>
 
