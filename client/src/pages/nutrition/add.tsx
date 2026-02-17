@@ -99,7 +99,7 @@ export default function NutritionAddScreen() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/users/${user?.id}/meals/summary`] });
+      queryClient.invalidateQueries({ queryKey: ["nutricao", "resumo-hoje"] });
       toast({ title: "Alimento adicionado", description: `${selectedFood?.descricao} adicionado ao ${SLOT_NAMES[mealSlot]}` });
       setSelectedFood(null);
       setQuantity(100);

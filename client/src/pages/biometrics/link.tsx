@@ -4,19 +4,16 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
 
 interface LinkDeviceForm {
-  name: string;
   macAddress: string;
 }
 
 export default function BiometricsLinkScreen() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const { register, handleSubmit, formState: { errors } } = useForm<LinkDeviceForm>();
@@ -24,25 +21,22 @@ export default function BiometricsLinkScreen() {
   const onSubmit = async (data: LinkDeviceForm) => {
     setIsLoading(true);
     try {
-      const res = await apiFetch("/api/devices", {
+      const res = await apiFetch("/api/biometria/dispositivos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: data.name,
-          type: "MISCALE2",
-          macAddress: data.macAddress.toUpperCase(),
-          manufacturer: "Xiaomi",
-          model: "Mi Body Composition Scale 2",
+          mac: data.macAddress.toUpperCase(),
+          tipo: "BALANCA_CORPORAL",
         }),
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || "Erro ao vincular dispositivo.");
+        throw new Error(err.error || err.detail || err.erro || "Erro ao vincular dispositivo.");
       }
-      queryClient.invalidateQueries({ queryKey: [`/api/users/${user?.id}/devices`] });
+      queryClient.invalidateQueries({ queryKey: ["biometria", "dispositivos"] });
       toast({
         title: "Balança vinculada com sucesso",
-        description: `${data.name} foi adicionada aos seus dispositivos.`,
+        description: "Dispositivo adicionado à sua conta.",
       });
       setLocation("/biometrics/devices");
     } catch (err: any) {
@@ -83,19 +77,6 @@ export default function BiometricsLinkScreen() {
           </p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="text-[12px] font-medium text-[#2F5641] uppercase tracking-wide ml-1">
-                Nome da balança
-              </label>
-              <input
-                {...register("name", { required: "Informe um nome para a balança" })}
-                placeholder="Ex.: Balança da academia"
-                className="w-full bg-white border border-[#E8EBE5] rounded-xl px-4 py-3.5 text-[#2F5641] placeholder-[#8B9286] focus:outline-none focus:border-[#C7AE6A] focus:ring-1 focus:ring-[#C7AE6A] transition-all text-sm"
-                data-testid="input-device-name"
-              />
-              {errors.name && <p className="text-[#D97952] text-xs ml-1">{errors.name.message}</p>}
-            </div>
-
             <div className="space-y-1.5">
               <label className="text-[12px] font-medium text-[#2F5641] uppercase tracking-wide ml-1">
                 Endereço MAC

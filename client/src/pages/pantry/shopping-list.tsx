@@ -103,7 +103,7 @@ export default function ShoppingListScreen() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const userId = user?.id ?? "";
+  const userId = String(user?.id ?? "");
   const [buyQuantities, setBuyQuantities] = useState<Record<string, number>>({});
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());

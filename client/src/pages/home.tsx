@@ -39,7 +39,7 @@ const WEIGHT_DATA = [
 export default function HomeScreen() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const userId = user?.id ?? "";
+  const userId = String(user?.id ?? "");
 
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -47,12 +47,9 @@ export default function HomeScreen() {
   const { data: hydrationData } = useQuery({
     queryKey: ["hydration", "resumo", today],
     queryFn: async () => {
-      const res = await apiFetch(`/api/hidratacao/resumo?data=${today}`);
-      if (!res.ok) throw new Error("Erro ao buscar resumo de hidratação");
-      return res.json() as Promise<{ consumido_ml: number; meta_ml: number; restante_ml: number; percentual: number; atingiu_meta: boolean }>;
+      return { consumido_ml: 0, meta_ml: 2500, restante_ml: 2500, percentual: 0, atingiu_meta: false } as { consumido_ml: number; meta_ml: number; restante_ml: number; percentual: number; atingiu_meta: boolean };
     },
-    refetchOnWindowFocus: true,
-    enabled: !!userId,
+    enabled: false,
   });
 
   const { data: mealSummary } = useQuery<{
@@ -62,7 +59,12 @@ export default function HomeScreen() {
     totalFat: number;
     meals: Record<string, { items: any[]; calories: number; protein: number; carbs: number; fat: number }>;
   }>({
-    queryKey: [`/api/users/${userId}/meals/summary`, `?date=${today}`],
+    queryKey: ["nutricao", "resumo-hoje"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/nutricao/resumo-hoje");
+      if (!res.ok) throw new Error("Erro ao buscar resumo nutricional");
+      return res.json();
+    },
     enabled: !!userId,
   });
 
@@ -96,14 +98,14 @@ export default function HomeScreen() {
               onClick={() => setLocation("/profile")}
               className="w-10 h-10 rounded-full bg-[#E8EBE5] overflow-hidden cursor-pointer active:scale-95 transition-transform"
             >
-               <img src={user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.displayName || "user"}`} alt="User" />
+               <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username || "user"}`} alt="User" />
             </div>
             <div 
               onClick={() => setLocation("/profile")}
               className="cursor-pointer"
             >
               <p className="text-xs text-[#8B9286] font-medium uppercase tracking-wider">{greeting},</p>
-              <h1 className="font-display text-xl text-[#2F5641]" data-testid="text-username">{user?.displayName || "Usuário"}</h1>
+              <h1 className="font-display text-xl text-[#2F5641]" data-testid="text-username">{user?.first_name || user?.username || "Usuário"}</h1>
             </div>
           </div>
           <button className="relative p-2 text-[#2F5641]">

@@ -1,4 +1,9 @@
+const REFRESH_TOKEN_KEY = "unio_refresh_token";
+
 let accessToken: string | null = null;
+let refreshToken: string | null = (() => {
+  try { return localStorage.getItem(REFRESH_TOKEN_KEY); } catch { return null; }
+})();
 let refreshPromise: Promise<string | null> | null = null;
 
 export function setAccessToken(token: string | null) {
@@ -9,21 +14,43 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
+export function setRefreshToken(token: string | null) {
+  refreshToken = token;
+  try {
+    if (token) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+    }
+  } catch {}
+}
+
+export function getRefreshToken(): string | null {
+  return refreshToken;
+}
+
 async function tryRefresh(): Promise<string | null> {
+  if (!refreshToken) {
+    accessToken = null;
+    return null;
+  }
   try {
     const res = await fetch("/api/auth/refresh", {
       method: "POST",
-      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh: refreshToken }),
     });
     if (!res.ok) {
-      accessToken = null;
+      setAccessToken(null);
+      setRefreshToken(null);
       return null;
     }
     const data = await res.json();
-    accessToken = data.accessToken;
+    setAccessToken(data.access);
     return accessToken;
   } catch {
-    accessToken = null;
+    setAccessToken(null);
+    setRefreshToken(null);
     return null;
   }
 }
@@ -51,17 +78,15 @@ export async function apiFetch(
   let res = await fetch(input, {
     ...init,
     headers,
-    credentials: "include",
   });
 
-  if (res.status === 401 && accessToken) {
+  if (res.status === 401 && refreshToken) {
     const newToken = await refreshAccessToken();
     if (newToken) {
       headers.set("Authorization", `Bearer ${newToken}`);
       res = await fetch(input, {
         ...init,
         headers,
-        credentials: "include",
       });
     }
   }

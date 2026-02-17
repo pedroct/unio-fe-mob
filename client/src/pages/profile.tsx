@@ -7,29 +7,24 @@ import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-interface ProfileData {
-  displayName: string | null;
-  email: string | null;
-  heightCm: number | null;
-  birthDate: string | null;
-  sex: string | null;
-  activityLevel: string | null;
-  scaleMac: string | null;
-  avatarUrl: string | null;
+interface StagingProfile {
+  id: number;
+  usuario_id: number;
+  tipo: string | null;
+  altura_cm: number | null;
+  peso_meta_kg: number | null;
+  objetivo: string | null;
+  data_nascimento: string | null;
+  sexo: string | null;
+  foto_url: string | null;
+  mac_balanca: string | null;
+  idade: number | null;
+  criado_em: string;
 }
 
 interface FieldError {
   field: string;
   message: string;
-}
-
-function formatMacInput(value: string): string {
-  const hex = value.toUpperCase().replace(/[^A-F0-9]/g, "").slice(0, 12);
-  const parts: string[] = [];
-  for (let i = 0; i < hex.length; i += 2) {
-    parts.push(hex.slice(i, i + 2));
-  }
-  return parts.join(":");
 }
 
 function formatBirthDateInput(raw: string): { display: string; iso: string | null } {
@@ -67,68 +62,86 @@ export default function ProfileScreen() {
   const [birthDateDisplay, setBirthDateDisplay] = useState("");
 
   const [form, setForm] = useState({
-    displayName: "",
+    first_name: "",
+    last_name: "",
     email: "",
-    heightCm: "",
-    birthDate: "",
-    sex: "",
-    activityLevel: "",
-    scaleMac: "",
+    altura_cm: "",
+    data_nascimento: "",
+    sexo: "",
+    objetivo: "",
   });
 
-  const profileQuery = useQuery<ProfileData>({
+  const profileQuery = useQuery<StagingProfile>({
     queryKey: ["profile"],
     queryFn: async () => {
-      const res = await apiFetch("/api/auth/profile");
+      const res = await apiFetch("/api/nucleo/perfil");
       if (!res.ok) throw new Error("Erro ao carregar perfil.");
       return res.json();
     },
   });
 
   useEffect(() => {
+    if (user) {
+      setForm((prev) => ({
+        ...prev,
+        first_name: user.first_name || "",
+        last_name: user.last_name || "",
+        email: user.email || "",
+      }));
+    }
+  }, [user]);
+
+  useEffect(() => {
     if (profileQuery.data) {
       const p = profileQuery.data;
-      setForm({
-        displayName: p.displayName || "",
-        email: p.email || "",
-        heightCm: p.heightCm ? String(p.heightCm) : "",
-        birthDate: p.birthDate || "",
-        sex: p.sex || "",
-        activityLevel: p.activityLevel || "",
-        scaleMac: p.scaleMac || "",
-      });
-      setBirthDateDisplay(isoToDisplay(p.birthDate));
+      setForm((prev) => ({
+        ...prev,
+        altura_cm: p.altura_cm ? String(p.altura_cm) : "",
+        data_nascimento: p.data_nascimento || "",
+        sexo: p.sexo || "",
+        objetivo: p.objetivo || "",
+      }));
+      setBirthDateDisplay(isoToDisplay(p.data_nascimento));
     }
   }, [profileQuery.data]);
 
   const saveMutation = useMutation({
-    mutationFn: async (data: Record<string, any>) => {
-      const res = await apiFetch("/api/auth/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        throw json;
+    mutationFn: async (data: { userPayload: Record<string, any>; profilePayload: Record<string, any> }) => {
+      const [userRes, profileRes] = await Promise.all([
+        apiFetch("/api/nucleo/eu", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data.userPayload),
+        }),
+        apiFetch("/api/nucleo/perfil", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data.profilePayload),
+        }),
+      ]);
+      if (!userRes.ok) {
+        const err = await userRes.json();
+        throw err;
       }
-      return json as ProfileData;
+      if (!profileRes.ok) {
+        const err = await profileRes.json();
+        throw err;
+      }
+      const profileData = await profileRes.json();
+      return profileData as StagingProfile;
     },
     onSuccess: async (data) => {
       setFieldErrors({});
       queryClient.setQueryData(["profile"], data);
       await refreshUser();
-      const p = data;
-      setForm({
-        displayName: p.displayName || "",
-        email: p.email || "",
-        heightCm: p.heightCm ? String(p.heightCm) : "",
-        birthDate: p.birthDate || "",
-        sex: p.sex || "",
-        activityLevel: p.activityLevel || "",
-        scaleMac: p.scaleMac || "",
-      });
-      setBirthDateDisplay(isoToDisplay(p.birthDate));
+      setForm((prev) => ({
+        ...prev,
+        altura_cm: data.altura_cm ? String(data.altura_cm) : "",
+        data_nascimento: data.data_nascimento || "",
+        sexo: data.sexo || "",
+        objetivo: data.objetivo || "",
+      }));
+      setBirthDateDisplay(isoToDisplay(data.data_nascimento));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     },
@@ -140,7 +153,7 @@ export default function ProfileScreen() {
         }
         setFieldErrors(mapped);
       } else {
-        setFieldErrors({ _general: err?.error || "Erro ao salvar perfil." });
+        setFieldErrors({ _general: err?.error || err?.detail || "Erro ao salvar perfil." });
       }
     },
   });
@@ -148,30 +161,24 @@ export default function ProfileScreen() {
   const validateClient = (): boolean => {
     const errs: Record<string, string> = {};
 
-    if (!form.displayName.trim()) errs.displayName = "Nome é obrigatório.";
+    if (!form.first_name.trim()) errs.first_name = "Nome é obrigatório.";
 
-    if (form.birthDate) {
-      const d = new Date(form.birthDate);
+    if (form.data_nascimento) {
+      const d = new Date(form.data_nascimento);
       if (isNaN(d.getTime())) {
-        errs.birthDate = "Data de nascimento inválida.";
+        errs.data_nascimento = "Data de nascimento inválida.";
       } else if (d > new Date()) {
-        errs.birthDate = "Data de nascimento não pode ser futura.";
+        errs.data_nascimento = "Data de nascimento não pode ser futura.";
       }
     }
 
-    if (form.heightCm) {
-      const h = parseFloat(form.heightCm);
-      if (isNaN(h) || h <= 0) errs.heightCm = "Altura deve ser um número positivo.";
+    if (form.altura_cm) {
+      const h = parseFloat(form.altura_cm);
+      if (isNaN(h) || h <= 0) errs.altura_cm = "Altura deve ser um número positivo.";
     }
 
-    if (form.sex && !["M", "F"].includes(form.sex)) {
-      errs.sex = "Sexo deve ser M ou F.";
-    }
-
-    if (form.scaleMac) {
-      if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(form.scaleMac)) {
-        errs.scaleMac = "MAC inválido. Use o formato AA:BB:CC:DD:EE:FF.";
-      }
+    if (form.sexo && !["M", "F"].includes(form.sexo)) {
+      errs.sexo = "Sexo deve ser M ou F.";
     }
 
     setFieldErrors(errs);
@@ -180,15 +187,17 @@ export default function ProfileScreen() {
 
   const handleSave = () => {
     if (!validateClient()) return;
-    const payload: Record<string, any> = {
-      displayName: form.displayName,
+    const userPayload: Record<string, any> = {
+      first_name: form.first_name,
+      last_name: form.last_name,
     };
-    payload.birthDate = form.birthDate || null;
-    payload.heightCm = form.heightCm ? parseFloat(form.heightCm) : null;
-    payload.sex = form.sex || null;
-    payload.activityLevel = form.activityLevel || null;
-    payload.scaleMac = form.scaleMac || null;
-    saveMutation.mutate(payload);
+    const profilePayload: Record<string, any> = {
+      data_nascimento: form.data_nascimento || null,
+      altura_cm: form.altura_cm ? parseFloat(form.altura_cm) : null,
+      sexo: form.sexo || null,
+      objetivo: form.objetivo || null,
+    };
+    saveMutation.mutate({ userPayload, profilePayload });
   };
 
   const handleLogout = async () => {
@@ -197,7 +206,7 @@ export default function ProfileScreen() {
     setLocation("/auth");
   };
 
-  const photo = user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.displayName || "user"}`;
+  const photo = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username || "user"}`;
 
   if (profileQuery.isLoading) {
     return (
@@ -288,17 +297,28 @@ export default function ProfileScreen() {
                     <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nome</label>
                     <input
                       type="text"
-                      value={form.displayName}
-                      onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+                      value={form.first_name}
+                      onChange={(e) => setForm({ ...form, first_name: e.target.value })}
                       placeholder="Digite seu nome"
-                      className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.displayName ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                      className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.first_name ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
                       data-testid="input-name"
                     />
-                    {fieldErrors.displayName && (
+                    {fieldErrors.first_name && (
                       <p className="text-[#BE4E35] text-[10px] mt-1 flex items-center gap-1" data-testid="error-name">
-                        <AlertCircle size={10} /> {fieldErrors.displayName}
+                        <AlertCircle size={10} /> {fieldErrors.first_name}
                       </p>
                     )}
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Sobrenome</label>
+                    <input
+                      type="text"
+                      value={form.last_name}
+                      onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                      placeholder="Digite seu sobrenome"
+                      className="w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] border-[#E8EBE5]"
+                      data-testid="input-last-name"
+                    />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">E-mail</label>
@@ -325,15 +345,15 @@ export default function ProfileScreen() {
                 <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Altura (cm)</label>
                 <input
                   type="number"
-                  value={form.heightCm}
-                  onChange={(e) => setForm({ ...form, heightCm: e.target.value })}
+                  value={form.altura_cm}
+                  onChange={(e) => setForm({ ...form, altura_cm: e.target.value })}
                   placeholder="Ex.: 178"
-                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.heightCm ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.altura_cm ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
                   data-testid="input-height"
                 />
-                {fieldErrors.heightCm && (
+                {fieldErrors.altura_cm && (
                   <p className="text-[#BE4E35] text-[10px] mt-1" data-testid="error-height">
-                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.heightCm}
+                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.altura_cm}
                   </p>
                 )}
               </div>
@@ -346,85 +366,55 @@ export default function ProfileScreen() {
                     const { display, iso } = formatBirthDateInput(e.target.value);
                     setBirthDateDisplay(display);
                     if (iso) {
-                      setForm({ ...form, birthDate: iso });
+                      setForm({ ...form, data_nascimento: iso });
                     } else if (display === "") {
-                      setForm({ ...form, birthDate: "" });
+                      setForm({ ...form, data_nascimento: "" });
                     }
                   }}
                   placeholder="DD/MM/AAAA"
                   inputMode="numeric"
                   maxLength={10}
-                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.birthDate ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.data_nascimento ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
                   data-testid="input-birthdate"
                 />
-                {fieldErrors.birthDate && (
+                {fieldErrors.data_nascimento && (
                   <p className="text-[#BE4E35] text-[10px] mt-1" data-testid="error-birthdate">
-                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.birthDate}
+                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.data_nascimento}
                   </p>
                 )}
               </div>
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Sexo</label>
                 <select
-                  value={form.sex}
-                  onChange={(e) => setForm({ ...form, sex: e.target.value })}
-                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.sex ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                  value={form.sexo}
+                  onChange={(e) => setForm({ ...form, sexo: e.target.value })}
+                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.sexo ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
                   data-testid="select-sex"
                 >
                   <option value="" disabled>Selecione</option>
                   <option value="M">Masculino</option>
                   <option value="F">Feminino</option>
                 </select>
-                {fieldErrors.sex && (
+                {fieldErrors.sexo && (
                   <p className="text-[#BE4E35] text-[10px] mt-1" data-testid="error-sex">
-                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.sex}
+                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.sexo}
                   </p>
                 )}
               </div>
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nível atividade</label>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Objetivo</label>
                 <select
-                  value={form.activityLevel}
-                  onChange={(e) => setForm({ ...form, activityLevel: e.target.value })}
+                  value={form.objetivo}
+                  onChange={(e) => setForm({ ...form, objetivo: e.target.value })}
                   className="w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] border-[#E8EBE5]"
-                  data-testid="select-activity"
+                  data-testid="select-objetivo"
                 >
                   <option value="" disabled>Selecione</option>
-                  <option value="sedentary">Sedentário</option>
-                  <option value="light">Atividade leve</option>
-                  <option value="moderate">Atividade moderada</option>
-                  <option value="active">Muito ativo</option>
+                  <option value="perder_peso">Perder peso</option>
+                  <option value="manter_peso">Manter peso</option>
+                  <option value="ganhar_massa">Ganhar massa</option>
                 </select>
               </div>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide mb-4">
-              Dispositivos
-            </h2>
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">MAC da balança</label>
-              <input
-                type="text"
-                value={form.scaleMac}
-                onChange={(e) => {
-                  const formatted = formatMacInput(e.target.value);
-                  setForm({ ...form, scaleMac: formatted });
-                }}
-                placeholder="AA:BB:CC:DD:EE:FF"
-                maxLength={17}
-                className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium font-mono text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.scaleMac ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
-                data-testid="input-scale-mac"
-              />
-              {fieldErrors.scaleMac && (
-                <p className="text-[#BE4E35] text-[10px] mt-1" data-testid="error-scale-mac">
-                  <AlertCircle size={10} className="inline mr-1" />{fieldErrors.scaleMac}
-                </p>
-              )}
-              <p className="text-[10px] text-[#8B9286] mt-2 opacity-80">
-                Endereço MAC da sua Xiaomi Mi Scale 2 para conexão Bluetooth.
-              </p>
             </div>
           </section>
 

@@ -3,9 +3,10 @@ import { ChevronLeft, Bluetooth, Scale, Check, RefreshCw, Plus, Search, X, Loade
 import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { useSyncEngine } from "@/lib/sync-engine";
-import { apiRequest } from "@/lib/queryClient";
 
 interface FoodItem {
   id: string;
@@ -19,6 +20,7 @@ interface FoodItem {
 
 export default function NutritionScaleScreen() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
   const [connectionStatus, setConnectionStatus] = useState<"searching" | "connected" | "disconnected">("searching");
   const [weight, setWeight] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
@@ -29,26 +31,6 @@ export default function NutritionScaleScreen() {
 
   const { data: foods = [], isLoading: foodsLoading } = useQuery<FoodItem[]>({
     queryKey: ["/api/foods"],
-  });
-
-  const ensureUserMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/users", {
-        username: "default_user",
-        displayName: "Usuário UNIO",
-      });
-      return res.json();
-    },
-  });
-
-  const saveRecordMutation = useMutation({
-    mutationFn: async (payload: { userId: string; weightKg: number; source: string }) => {
-      const res = await apiRequest("POST", "/api/body-records", payload);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/body-records"] });
-    },
   });
 
   useEffect(() => {
@@ -82,22 +64,9 @@ export default function NutritionScaleScreen() {
     if (!selectedFood || weight === 0) return;
 
     try {
-      let userId: string;
-      try {
-        const userRes = await apiRequest("POST", "/api/users", {
-          username: "default_user",
-          displayName: "Usuário UNIO",
-        });
-        const user = await userRes.json();
-        userId = user.id;
-      } catch {
-        const pullResult = await syncEngine.pull(["users"]);
-        const existingUsers = pullResult?.changes?.users?.created || [];
-        if (existingUsers.length > 0) {
-          userId = existingUsers[0].id;
-        } else {
-          throw new Error("No user available");
-        }
+      const userId = String(user?.id ?? "");
+      if (!userId) {
+        throw new Error("Usuário não autenticado");
       }
 
       syncEngine.pushChange("body_records", "create", {

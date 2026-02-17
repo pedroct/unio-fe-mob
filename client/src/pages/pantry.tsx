@@ -21,7 +21,7 @@ function formatQuantity(qty: number, unit: string): string {
 export default function PantryScreen() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const userId = user?.id ?? "";
+  const userId = String(user?.id ?? "");
   const [filter, setFilter] = useState("Todos");
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);

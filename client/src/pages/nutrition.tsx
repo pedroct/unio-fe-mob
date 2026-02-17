@@ -43,16 +43,22 @@ export default function NutritionScreen() {
       fat: number;
     }>;
   }>({
-    queryKey: [`/api/users/${user?.id}/meals/summary`, `?date=${today}`],
+    queryKey: ["nutricao", "resumo-hoje"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/nutricao/resumo-hoje");
+      if (!res.ok) throw new Error("Erro ao buscar resumo nutricional");
+      return res.json();
+    },
     enabled: !!user,
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (entryId: string) => {
-      await apiFetch(`/api/meal-entries/${entryId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/nutricao/diario/registros/${entryId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Erro ao remover registro");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/users/${user?.id}/meals/summary`] });
+      queryClient.invalidateQueries({ queryKey: ["nutricao", "resumo-hoje"] });
     },
   });
 
