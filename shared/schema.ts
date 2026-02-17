@@ -84,6 +84,7 @@ export const devices = pgTable(
     manufacturer: text("manufacturer"),
     model: text("model"),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    emEsperaAte: timestamp("em_espera_ate", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -92,6 +93,7 @@ export const devices = pgTable(
     index("idx_devices_user_id").on(t.userId),
     index("idx_devices_updated_at").on(t.updatedAt),
     uniqueIndex("idx_devices_mac_user").on(t.userId, t.macAddress),
+    index("idx_devices_mac_address").on(t.macAddress),
   ]
 );
 

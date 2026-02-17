@@ -8,6 +8,7 @@ import {
   Plus,
   ChevronLeft,
   Calendar,
+  Loader2,
 } from "lucide-react";
 import {
   AreaChart,
@@ -22,49 +23,95 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 
-const RANGE_MAP: Record<string, string> = {
-  "7D": "7d",
-  "30D": "30d",
-  "3M": "3m",
-  "1Y": "1y",
+const RANGE_DIAS: Record<string, number> = {
+  "7D": 7,
+  "30D": 30,
+  "3M": 90,
+  "1Y": 365,
 };
+
+interface EstadoAtual {
+  ultima_leitura: {
+    id: string;
+    peso_kg: number;
+    impedancia_ohm: number | null;
+    gordura_percentual: number | null;
+    massa_muscular_kg: number | null;
+    massa_ossea_kg: number | null;
+    agua_percentual: number | null;
+    gordura_visceral: number | null;
+    imc: number | null;
+    tmb_kcal: number | null;
+    origem: string;
+    dispositivo_id: string | null;
+    registrado_em: string;
+    criado_em: string;
+  } | null;
+  peso_atual_kg: number | null;
+  variacao_peso_7d: number | null;
+  variacao_peso_30d: number | null;
+  total_leituras: number;
+  meta_peso_kg: number | null;
+  peso_ate_meta: number | null;
+}
+
+interface Historico {
+  pontos: { data: string; peso_kg: number; gordura_percentual: number | null; imc: number | null }[];
+  media_peso_kg: number | null;
+  peso_minimo_kg: number | null;
+  peso_maximo_kg: number | null;
+}
 
 export default function BiometricsScreen() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const [timeRange, setTimeRange] = useState<string>("7D");
 
-  const { data: records = [], isLoading } = useQuery<any[]>({
-    queryKey: [`/api/users/${user?.id}/body-records`, `?range=${RANGE_MAP[timeRange]}`],
+  const { data: estado, isLoading: loadingEstado } = useQuery<EstadoAtual>({
+    queryKey: ["/api/biometria/estado-atual"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/biometria/estado-atual");
+      if (!res.ok) throw new Error("Erro ao buscar estado");
+      return res.json();
+    },
     enabled: !!user,
   });
 
-  const { data: latest } = useQuery<any>({
-    queryKey: [`/api/users/${user?.id}/body-records/latest`],
+  const { data: historico, isLoading: loadingHistorico } = useQuery<Historico>({
+    queryKey: ["/api/biometria/historico", timeRange],
+    queryFn: async () => {
+      const dias = RANGE_DIAS[timeRange] || 30;
+      const res = await apiFetch(`/api/biometria/historico?dias=${dias}`);
+      if (!res.ok) throw new Error("Erro ao buscar histórico");
+      return res.json();
+    },
     enabled: !!user,
   });
 
-  const chartData = records.map((r: any) => {
-    const d = new Date(r.measuredAt);
+  const chartData = (historico?.pontos || []).map((p) => {
+    const d = new Date(p.data);
     return {
       date: `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}`,
-      weight: r.weightKg,
+      weight: p.peso_kg,
     };
   });
 
-  const currentWeight = latest?.weightKg;
-  const firstWeight = records.length > 0 ? records[0].weightKg : null;
-  const weightDelta = currentWeight && firstWeight ? (currentWeight - firstWeight).toFixed(1) : null;
+  const currentWeight = estado?.peso_atual_kg;
+  const weightDelta = estado?.variacao_peso_7d;
+  const latest = estado?.ultima_leitura;
 
   const metrics = [
-    { label: "Gordura", value: latest?.fatPercent ? `${latest.fatPercent}%` : "—", icon: Activity, color: "#D97952" },
-    { label: "Músculo", value: latest?.muscleMassKg ? `${latest.muscleMassKg} kg` : "—", icon: TrendingUp, color: "#2F5641" },
-    { label: "Água", value: latest?.waterPercent ? `${latest.waterPercent}%` : "—", icon: Droplets, color: "#3D7A8C" },
-    { label: "Osso", value: latest?.boneMassKg ? `${latest.boneMassKg} kg` : "—", icon: Bone, color: "#8B9286" },
-    { label: "Visceral", value: latest?.visceralFat ? `${latest.visceralFat}` : "—", icon: Activity, color: "#C7AE6A" },
-    { label: "TMB", value: latest?.bmr ? `${latest.bmr}` : "—", icon: Activity, color: "#648D4A" },
+    { label: "Gordura", value: latest?.gordura_percentual != null ? `${latest.gordura_percentual}%` : "—", icon: Activity, color: "#D97952" },
+    { label: "Músculo", value: latest?.massa_muscular_kg != null ? `${latest.massa_muscular_kg} kg` : "—", icon: TrendingUp, color: "#2F5641" },
+    { label: "Água", value: latest?.agua_percentual != null ? `${latest.agua_percentual}%` : "—", icon: Droplets, color: "#3D7A8C" },
+    { label: "Osso", value: latest?.massa_ossea_kg != null ? `${latest.massa_ossea_kg} kg` : "—", icon: Bone, color: "#8B9286" },
+    { label: "Visceral", value: latest?.gordura_visceral != null ? `${latest.gordura_visceral}` : "—", icon: Activity, color: "#C7AE6A" },
+    { label: "TMB", value: latest?.tmb_kcal != null ? `${latest.tmb_kcal}` : "—", icon: Activity, color: "#648D4A" },
   ];
+
+  const isLoading = loadingEstado || loadingHistorico;
 
   return (
     <Layout>
@@ -89,21 +136,36 @@ export default function BiometricsScreen() {
               <div>
                 <span className="text-xs font-medium text-[#8B9286] uppercase tracking-wider">Peso Atual</span>
                 <h2 className="font-display text-4xl font-semibold text-[#2F5641] mt-1" data-testid="text-current-weight">
-                  {currentWeight ? (
+                  {isLoading ? (
+                    <Loader2 size={24} className="animate-spin text-[#8B9286]" />
+                  ) : currentWeight != null ? (
                     <>{currentWeight} <span className="text-lg font-sans font-medium text-[#8B9286]">kg</span></>
                   ) : (
                     <span className="text-lg font-sans text-[#8B9286]">Sem dados</span>
                   )}
                 </h2>
               </div>
-              {weightDelta && (
+              {weightDelta != null && weightDelta !== 0 && (
                 <div className="bg-[#E8EBE5]/50 px-3 py-1.5 rounded-full">
                   <span className="text-xs font-semibold text-[#2F5641]" data-testid="text-weight-delta">
-                    {parseFloat(weightDelta) > 0 ? "+" : ""}{weightDelta} kg
+                    {weightDelta > 0 ? "+" : ""}{weightDelta} kg (7d)
                   </span>
                 </div>
               )}
             </div>
+
+            {estado?.meta_peso_kg != null && estado?.peso_ate_meta != null && (
+              <div className="bg-[#F5F3EE] px-4 py-3 rounded-xl mb-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-[#8B9286]">Meta de peso</span>
+                  <span className="text-xs font-semibold text-[#2F5641]">{estado.meta_peso_kg} kg</span>
+                </div>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-xs text-[#8B9286]">Faltam</span>
+                  <span className="text-xs font-semibold text-[#C7AE6A]">{Math.abs(estado.peso_ate_meta).toFixed(1)} kg</span>
+                </div>
+              </div>
+            )}
 
             {chartData.length > 1 ? (
               <div className="h-[200px] w-full -ml-4">
@@ -144,12 +206,14 @@ export default function BiometricsScreen() {
               </div>
             ) : (
               <div className="h-[200px] flex items-center justify-center">
-                <p className="text-sm text-[#8B9286]">{isLoading ? "Carregando..." : "Registre sua primeira pesagem para ver o gráfico"}</p>
+                <p className="text-sm text-[#8B9286]">
+                  {isLoading ? "Carregando..." : "Registre sua primeira pesagem para ver o gráfico"}
+                </p>
               </div>
             )}
 
             <div className="flex justify-between mt-6 bg-[#F5F3EE] p-1 rounded-xl">
-              {["7D", "30D", "3M", "1Y"].map((range) => (
+              {(["7D", "30D", "3M", "1Y"] as const).map((range) => (
                 <button
                   key={range}
                   onClick={() => setTimeRange(range)}
@@ -164,6 +228,14 @@ export default function BiometricsScreen() {
                 </button>
               ))}
             </div>
+
+            {historico && (
+              <div className="flex justify-between mt-4 text-[10px] text-[#8B9286]">
+                {historico.peso_minimo_kg != null && <span>Mín: {historico.peso_minimo_kg} kg</span>}
+                {historico.media_peso_kg != null && <span>Média: {historico.media_peso_kg} kg</span>}
+                {historico.peso_maximo_kg != null && <span>Máx: {historico.peso_maximo_kg} kg</span>}
+              </div>
+            )}
           </section>
 
           <section className="grid grid-cols-2 gap-3">
@@ -185,9 +257,15 @@ export default function BiometricsScreen() {
             ))}
           </section>
 
+          {estado && (
+            <div className="text-center text-[10px] text-[#8B9286]">
+              {estado.total_leituras} leituras registradas
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button
-              onClick={() => setLocation("/biometrics/scan")}
+              onClick={() => setLocation("/biometrics/devices")}
               className="flex-1 bg-[#2F5641] text-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/20 flex flex-col items-center justify-center gap-2 active:scale-[0.98] transition-transform"
               data-testid="button-start-weighing"
             >
@@ -205,6 +283,7 @@ export default function BiometricsScreen() {
           </div>
 
           <button
+            onClick={() => setLocation("/biometrics/scan")}
             className="w-full bg-white text-[#8B9286] p-4 rounded-2xl border border-[#E8EBE5] flex items-center justify-center gap-3 active:scale-[0.98] transition-transform hover:border-[#2F5641] hover:text-[#2F5641]"
             data-testid="button-manual-entry"
           >

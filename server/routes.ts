@@ -443,6 +443,235 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
+  // ── Biometria Xiaomi ──
+
+  app.post("/api/biometria/dispositivos/:id/preparar-pesagem", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const deviceId = req.params.id;
+      const device = await storage.getDevice(deviceId);
+      if (!device || device.userId !== userId) {
+        return res.status(404).json({ erro: "Dispositivo não encontrado" });
+      }
+      const emEsperaAte = new Date(Date.now() + 5 * 60 * 1000);
+      const updated = await storage.updateDevice(deviceId, { emEsperaAte });
+      if (!updated) {
+        return res.status(500).json({ erro: "Erro ao preparar pesagem." });
+      }
+      res.json({
+        id: updated.id,
+        tipo: updated.type,
+        tipo_display: updated.type === "MISCALE2" ? "Xiaomi Mi Body Composition Scale 2" : updated.type,
+        nome: updated.name,
+        categoria: "corporal",
+        modelo_hardware: updated.model || "",
+        fabricante: updated.manufacturer || "",
+        chipset: "",
+        mac_address: updated.macAddress || "",
+        status: "pendente",
+        observacao: "",
+        ultima_sincronizacao: updated.lastSeenAt?.toISOString() || null,
+        em_espera_ate: updated.emEsperaAte?.toISOString() || emEsperaAte.toISOString(),
+        criado_em: updated.createdAt.toISOString(),
+      });
+    } catch (err) {
+      console.error("[biometria] preparar-pesagem error:", err);
+      res.status(500).json({ erro: "Erro interno ao preparar pesagem." });
+    }
+  });
+
+  app.post("/api/biometria/registrar/xiaomi", async (req, res) => {
+    try {
+      const { mac_address, peso, impedancia, data_registro } = req.body;
+      if (!mac_address || typeof peso !== "number") {
+        return res.status(400).json({ erro: "Campos obrigatórios: mac_address, peso (número)." });
+      }
+
+      const deviceWithUser = await storage.getDeviceByMacWithActiveWindow(mac_address);
+      if (!deviceWithUser) {
+        return res.status(400).json({
+          erro: `Nenhuma janela de pesagem ativa encontrada para o MAC ${mac_address}. Inicie a pesagem no aplicativo antes de subir na balança.`,
+        });
+      }
+
+      const user = deviceWithUser.user!;
+      const userId = deviceWithUser.userId;
+      const deviceId = deviceWithUser.id;
+
+      let imp: number | null = impedancia ?? null;
+      if (imp === 0 || imp === 65534) imp = null;
+
+      const heightM = user.heightCm ? user.heightCm / 100 : null;
+      const bmi = heightM ? parseFloat((peso / (heightM * heightM)).toFixed(1)) : null;
+
+      const existing = await storage.findDuplicateBodyRecord(userId, deviceId, peso, imp, 60);
+      if (existing) {
+        return res.status(201).json({
+          sucesso: true,
+          mensagem: "Leitura duplicada ignorada (já existe registro similar nos últimos 60s)",
+          leitura_id: existing.id,
+          usuario_email: user.email || "",
+          duplicata: true,
+          dados: {
+            peso_kg: existing.weightKg,
+            imc: existing.bmi,
+            gordura_percentual: existing.fatPercent,
+            massa_muscular_kg: existing.muscleMassKg,
+          },
+        });
+      }
+
+      const measuredAt = data_registro ? new Date(data_registro) : new Date();
+      const record = await storage.createBodyRecord({
+        userId,
+        deviceId,
+        weightKg: peso,
+        impedance: imp,
+        bmi,
+        source: "dispositivo",
+        measuredAt,
+      });
+
+      await storage.updateDevice(deviceId, {
+        emEsperaAte: null,
+        lastSeenAt: new Date(),
+      });
+
+      res.status(201).json({
+        sucesso: true,
+        mensagem: `Leitura registrada para ${user.email || userId}`,
+        leitura_id: record.id,
+        usuario_email: user.email || "",
+        duplicata: false,
+        dados: {
+          peso_kg: record.weightKg,
+          imc: record.bmi,
+          gordura_percentual: record.fatPercent,
+          massa_muscular_kg: record.muscleMassKg,
+        },
+      });
+    } catch (err) {
+      console.error("[biometria] registrar/xiaomi error:", err);
+      res.status(500).json({ erro: "Erro interno ao registrar leitura." });
+    }
+  });
+
+  app.get("/api/biometria/estado-atual", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const latest = await storage.getLatestBodyRecord(userId);
+
+      const now = new Date();
+      const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const since30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const records7d = await storage.getBodyRecordsByUserWithRange(userId, "7d");
+      const records30d = await storage.getBodyRecordsByUserWithRange(userId, "30d");
+      const allRecords = await storage.getBodyRecordsByUser(userId);
+
+      let variacao7d: number | null = null;
+      let variacao30d: number | null = null;
+
+      if (latest && records7d.length > 0) {
+        const oldest7d = records7d[0];
+        variacao7d = parseFloat((latest.weightKg - oldest7d.weightKg).toFixed(1));
+      }
+      if (latest && records30d.length > 0) {
+        const oldest30d = records30d[0];
+        variacao30d = parseFloat((latest.weightKg - oldest30d.weightKg).toFixed(1));
+      }
+
+      const weightGoal = await (async () => {
+        const goals = await storage.getGoalsByUser(userId);
+        return goals.find((g) => g.type === "weight" && g.status === "active");
+      })();
+
+      const metaPesoKg = weightGoal?.targetValue ?? null;
+      const pesoAteMeta = latest && metaPesoKg !== null
+        ? parseFloat((latest.weightKg - metaPesoKg).toFixed(1))
+        : null;
+
+      res.json({
+        ultima_leitura: latest
+          ? {
+              id: latest.id,
+              peso_kg: latest.weightKg,
+              impedancia_ohm: latest.impedance,
+              gordura_percentual: latest.fatPercent,
+              massa_muscular_kg: latest.muscleMassKg,
+              massa_ossea_kg: latest.boneMassKg,
+              agua_percentual: latest.waterPercent,
+              gordura_visceral: latest.visceralFat,
+              imc: latest.bmi,
+              tmb_kcal: latest.bmr,
+              idade_metabolica: null,
+              massa_magra_kg: null,
+              proteina_percentual: null,
+              tipo_corporal: null,
+              origem: latest.source,
+              dispositivo_id: latest.deviceId,
+              registrado_em: latest.measuredAt.toISOString(),
+              criado_em: latest.createdAt.toISOString(),
+            }
+          : null,
+        peso_atual_kg: latest?.weightKg ?? null,
+        variacao_peso_7d: variacao7d,
+        variacao_peso_30d: variacao30d,
+        total_leituras: allRecords.length,
+        meta_peso_kg: metaPesoKg,
+        peso_ate_meta: pesoAteMeta,
+      });
+    } catch (err) {
+      console.error("[biometria] estado-atual error:", err);
+      res.status(500).json({ erro: "Erro ao buscar estado atual." });
+    }
+  });
+
+  app.get("/api/biometria/historico", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const dias = parseInt(req.query.dias as string) || 30;
+      const limite = parseInt(req.query.limite as string) || 0;
+
+      const rangeMap: Record<number, string> = { 7: "7d", 30: "30d", 90: "3m", 365: "1y" };
+      const rangeKey = rangeMap[dias] || `${dias}d`;
+
+      let records: any[];
+      if (Object.values(rangeMap).includes(rangeKey)) {
+        records = await storage.getBodyRecordsByUserWithRange(userId, rangeKey);
+      } else {
+        const since = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+        const all = await storage.getBodyRecordsByUser(userId);
+        records = all.filter((r) => r.measuredAt >= since);
+        records.sort((a, b) => a.measuredAt.getTime() - b.measuredAt.getTime());
+      }
+
+      if (limite > 0) records = records.slice(-limite);
+
+      const pontos = records.map((r: any) => ({
+        data: r.measuredAt.toISOString(),
+        peso_kg: r.weightKg,
+        gordura_percentual: r.fatPercent,
+        imc: r.bmi,
+      }));
+
+      const weights = records.map((r: any) => r.weightKg);
+      const mediaPeso = weights.length > 0 ? parseFloat((weights.reduce((a: number, b: number) => a + b, 0) / weights.length).toFixed(1)) : null;
+      const pesoMinimo = weights.length > 0 ? parseFloat(Math.min(...weights).toFixed(1)) : null;
+      const pesoMaximo = weights.length > 0 ? parseFloat(Math.max(...weights).toFixed(1)) : null;
+
+      res.json({
+        pontos,
+        media_peso_kg: mediaPeso,
+        peso_minimo_kg: pesoMinimo,
+        peso_maximo_kg: pesoMaximo,
+      });
+    } catch (err) {
+      console.error("[biometria] historico error:", err);
+      res.status(500).json({ erro: "Erro ao buscar histórico." });
+    }
+  });
+
   // ── Goals ──
   app.get("/api/users/:userId/goals", requireAuth, async (req, res) => {
     if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });

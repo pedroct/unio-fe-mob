@@ -115,6 +115,9 @@ export interface IStorage {
   getBodyRecordsByUserWithRange(userId: string, range?: string): Promise<BodyRecord[]>;
   getLatestBodyRecord(userId: string): Promise<BodyRecord | undefined>;
 
+  getDeviceByMacWithActiveWindow(macAddress: string): Promise<(Device & { user?: User }) | undefined>;
+  findDuplicateBodyRecord(userId: string, deviceId: string, weightKg: number, impedance: number | null, windowSeconds: number): Promise<BodyRecord | undefined>;
+
   getHydrationMeta(userId: string): Promise<{ ml_meta_diaria: number; atualizado_em: string }>;
   updateHydrationMeta(userId: string, mlMetaDiaria: number): Promise<{ ml_meta_diaria: number; atualizado_em: string; mensagem: string }>;
   createHydrationRecord(data: { userId: string; amountMl: number; beverageType: string; recordedAt?: Date }): Promise<HydrationRecord>;
@@ -602,6 +605,58 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(bodyRecords.measuredAt))
       .limit(1);
     return r;
+  }
+
+  async getDeviceByMacWithActiveWindow(macAddress: string): Promise<(Device & { user?: User }) | undefined> {
+    const now = new Date();
+    const rows = await db
+      .select({ device: devices, user: users })
+      .from(devices)
+      .innerJoin(users, eq(devices.userId, users.id))
+      .where(
+        and(
+          eq(devices.macAddress, macAddress.toUpperCase()),
+          notDeleted(devices),
+          gte(devices.emEsperaAte, now)
+        )
+      )
+      .limit(1);
+    if (!rows.length) return undefined;
+    return { ...rows[0].device, user: rows[0].user };
+  }
+
+  async findDuplicateBodyRecord(
+    userId: string,
+    deviceId: string,
+    weightKg: number,
+    impedance: number | null,
+    windowSeconds: number
+  ): Promise<BodyRecord | undefined> {
+    const since = new Date(Date.now() - windowSeconds * 1000);
+    const tolerance = 0.05;
+
+    const conditions = [
+      eq(bodyRecords.userId, userId),
+      eq(bodyRecords.deviceId, deviceId),
+      gte(bodyRecords.weightKg, weightKg - tolerance),
+      lt(bodyRecords.weightKg, weightKg + tolerance + 0.001),
+      gte(bodyRecords.createdAt, since),
+      notDeleted(bodyRecords),
+    ];
+
+    if (impedance === null) {
+      conditions.push(isNull(bodyRecords.impedance));
+    } else {
+      conditions.push(eq(bodyRecords.impedance, impedance));
+    }
+
+    const [existing] = await db
+      .select()
+      .from(bodyRecords)
+      .where(and(...conditions))
+      .orderBy(desc(bodyRecords.createdAt))
+      .limit(1);
+    return existing;
   }
 
   // ── Hydration (new spec) ──

@@ -104,10 +104,21 @@ Preferred communication style: Simple, everyday language.
   - Correlation ID: Uses `X-Request-ID` header from client when present (max 128 chars); generates fallback `ble-XXXXXXXX` when absent
 - **E2E Tests:** 24 tests in `tests/ble-kitchen-scale.test.ts` (Phase 1+2 incl. concurrency), 10 tests in `tests/ble-phase3-security.test.ts` (rate limit, metrics, audit, regression)
 
-### BLE Smart Scale (Xiaomi Mi Scale 2 — Mock)
-- `client/src/lib/ble-mock.ts` simulates Bluetooth Low Energy connection to Xiaomi Mi Scale 2
-- Produces mock weight/impedance measurements
-- Real BLE integration planned via external scanner posting to `POST /api/biometria/registrar/xiaomi`
+### BLE Smart Scale (Xiaomi Mi Scale 2 — Real Integration)
+- External BLE scanner posts readings to backend (no Web Bluetooth in app)
+- `devices` table has `em_espera_ate` nullable timestamp for 5-minute weighing window
+- **Endpoints:**
+  - `POST /api/biometria/dispositivos/:id/preparar-pesagem` — JWT required, opens 5-min window (`em_espera_ate = now+5min`)
+  - `POST /api/biometria/registrar/xiaomi` — No JWT (scanner endpoint), validates active window by MAC, creates body_record
+  - `GET /api/biometria/estado-atual` — JWT required, returns latest reading + peso atual + variações 7d/30d + meta
+  - `GET /api/biometria/historico?dias=30&limite=0` — JWT required, historical weight/fat/bmi data points + statistics
+- **Deduplication:** 60-second window, device+user+weight±0.05kg+impedance match
+- **Impedance filtering:** Values 0 and 65534 converted to null (sensor noise)
+- **BMI calculation:** Uses user's `heightCm` from profile (if available)
+- **Window cleanup:** `em_espera_ate` cleared after successful ingestion, `lastSeenAt` updated
+- **Frontend:** Real API integration with polling (2.5s interval), countdown timer, success/timeout/error states
+- **E2E Tests:** 9 tests in `tests/biometria-xiaomi.test.ts` (preparar, registrar, dedup, impedância, estado, histórico)
+- `client/src/lib/ble-mock.ts` still available for offline development
 
 ### Key Conventions
 - All database IDs use UUIDs (`gen_random_uuid()`)
