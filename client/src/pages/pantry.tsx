@@ -77,20 +77,24 @@ export default function PantryScreen() {
           </section>
 
           {/* Filters */}
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {["Todos", "Proteínas", "Grãos", "Suplementos", "Gorduras"].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setFilter(cat)}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
-                  filter === cat 
-                    ? "bg-[#2F5641] text-white" 
-                    : "bg-white border border-[#E8EBE5] text-[#8B9286]"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+          <div className="relative">
+            <div className="flex gap-2 overflow-x-auto px-1 py-1 scrollbar-hide">
+              {["Todos", "Proteínas", "Grãos", "Suplementos", "Gorduras"].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setFilter(cat)}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                    filter === cat 
+                      ? "bg-[#2F5641] text-white" 
+                      : "bg-white border border-[#E8EBE5] text-[#8B9286]"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-[#FAFBF8] to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-[#FAFBF8] to-transparent" />
           </div>
 
           {/* Inventory Grid */}
