@@ -1,7 +1,7 @@
 import Layout from "@/components/layout";
 import { ChevronLeft, Plus, ShoppingCart, Package, AlertTriangle, Filter } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 
 const INVENTORY_DATA = [
@@ -16,6 +16,30 @@ const INVENTORY_DATA = [
 export default function PantryScreen() {
   const [, setLocation] = useLocation();
   const [filter, setFilter] = useState("Todos");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const scrollLeft = useRef(0);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    isDragging.current = true;
+    startX.current = e.clientX;
+    scrollLeft.current = el.scrollLeft;
+    el.setPointerCapture(e.pointerId);
+  }, []);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current || !scrollRef.current) return;
+    const dx = e.clientX - startX.current;
+    scrollRef.current.scrollLeft = scrollLeft.current - dx;
+  }, []);
+
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    isDragging.current = false;
+    scrollRef.current?.releasePointerCapture(e.pointerId);
+  }, []);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -77,7 +101,14 @@ export default function PantryScreen() {
           </section>
 
           {/* Filters */}
-          <div className="sem-scrollbar flex gap-2 overflow-x-auto -mx-6 px-6 py-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div
+            ref={scrollRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            className="sem-scrollbar flex gap-2 overflow-x-auto -mx-6 px-6 py-1 cursor-grab active:cursor-grabbing select-none touch-pan-x"
+          >
             {["Todos", "Proteínas", "Grãos", "Suplementos", "Gorduras"].map((cat, i, arr) => (
               <button
                 key={cat}
