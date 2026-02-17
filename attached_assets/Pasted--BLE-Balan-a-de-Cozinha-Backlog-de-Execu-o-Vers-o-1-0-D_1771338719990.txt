@@ -1,0 +1,186 @@
+# BLE Balança de Cozinha - Backlog de Execução
+
+**Versão:** 1.0  
+**Data:** 17 de Fevereiro de 2026  
+**Status:** Pronto para execução
+
+---
+
+## 1) Objetivo
+
+Concluir o módulo BLE de balança de cozinha com foco em:
+
+- robustez de ingestão de leituras;
+- segurança e idempotência;
+- integração total com diário alimentar;
+- testes E2E e observabilidade para produção.
+
+---
+
+## 2) Estado atual (confirmado)
+
+Já existe no backend:
+
+- parser ICOMON para pacotes 14B e 20B;
+- endpoint de ingestão `POST /api/nutricao/diario/balanca-cozinha`;
+- fila de pendências (`PesagemPendente`) com associação e descarte;
+- conversão de unidades para gramas;
+- documentação técnica detalhada de hardware/protocolo.
+
+Gaps para fechamento de produção:
+
+- controles de idempotência/duplicidade com janela temporal explícita;
+- hardening de validações de payload e limites físicos;
+- trilha de auditoria e métricas operacionais;
+- suíte E2E específica do fluxo BLE ponta a ponta.
+
+---
+
+## 3) Entrega por fases (ordem recomendada)
+
+## Fase 1 — Robustez de ingestão
+
+### História 1.1: Idempotência de leituras
+**Como** backend de ingestão  
+**Quero** descartar leituras duplicadas em janela curta  
+**Para** evitar registros repetidos por ruído/reenvio do scanner
+
+Critérios de aceite:
+1. Leituras com mesma assinatura (`usuario`, `peso_gramas`, `unidade_original`, `mac_balanca`) em janela de 5s não geram nova pendência/registro.
+2. API retorna resposta determinística para duplicata (status e mensagem padronizados).
+3. Logs registram evento de deduplicação com motivo.
+
+### História 1.2: Validação de limites físicos
+Critérios de aceite:
+1. Rejeitar peso `<= 0`.
+2. Rejeitar peso acima da capacidade configurada (padrão 5000g, parametrizável).
+3. Rejeitar `pacote_hex` inválido com erro semântico e mensagem clara.
+
+### História 1.3: Tolerância de unidades
+Critérios de aceite:
+1. Aceitar unidades suportadas (`g`, `ml`, `ml_milk`, `oz`, `lb_oz`, `fl_oz`, `fl_oz_milk`).
+2. Unidade desconhecida gera fallback controlado e log de advertência.
+3. Conversão para gramas consistente e arredondamento padronizado.
+
+---
+
+## Fase 2 — Fluxo de pendências e associação
+
+### História 2.1: Associação segura de pesagem
+Critérios de aceite:
+1. Associar pendência apenas se status for `PENDENTE`.
+2. Bloquear associação concorrente (transação atômica).
+3. Atualizar `ASSOCIADA` com vínculo de `RegistroAlimentar` e timestamp.
+
+### História 2.2: Descarte auditável
+Critérios de aceite:
+1. Descarte muda status para `DESCARTADA` sem exclusão física.
+2. Não permitir descarte de pendência já associada.
+3. Retornar payload padronizado com identificação da pendência.
+
+### História 2.3: Associação por TBCA (se convergência ativa)
+Critérios de aceite:
+1. Endpoint de associação aceita `alimento_tbca_id` além de `alimento_id`.
+2. Backend prepara/resolve alimento consumível e conclui associação.
+3. Fluxo mantém compatibilidade com clientes legados.
+
+---
+
+## Fase 3 — Segurança e observabilidade
+
+### História 3.1: Rate limiting por usuário/dispositivo
+Critérios de aceite:
+1. Limite configurável por minuto para endpoint BLE.
+2. Excesso retorna erro padrão (`429`) com mensagem clara.
+3. Métrica de throttling disponível para monitoramento.
+
+### História 3.2: Auditoria operacional
+Critérios de aceite:
+1. Registrar ingestão, deduplicação, associação e descarte com contexto mínimo.
+2. Não logar dados sensíveis indevidos.
+3. Logs permitem rastrear incidente por `usuario`, `mac_balanca` e período.
+
+### História 3.3: Métricas e alertas
+Critérios de aceite:
+1. Métricas de sucesso/erro por endpoint BLE.
+2. Métrica de tempo de associação de pendência.
+3. Alertas para pico de erro de parse/validação.
+
+---
+
+## 4) Contrato de API (baseline)
+
+## 4.1 Ingestão BLE
+`POST /api/nutricao/diario/balanca-cozinha`
+
+Entrada:
+- `peso` + `unidade` **ou** `pacote_hex`
+- `alimento_id`/`codigo_barras` opcionais
+- `refeicao_id` opcional
+- `mac_balanca` opcional
+
+Saída:
+- `sucesso`
+- `registro_id` (quando criou diário)
+- `peso_original`, `unidade_original`, `peso_gramas`
+- `aguardando_alimento` (quando foi para fila)
+- `mensagem`
+
+## 4.2 Fila de pendências
+- `GET /api/nutricao/diario/pesagens-pendentes`
+- `POST /api/nutricao/diario/pesagens-pendentes/{pesagem_id}/associar`
+- `DELETE /api/nutricao/diario/pesagens-pendentes/{pesagem_id}`
+
+---
+
+## 5) Suíte E2E recomendada (BLE)
+
+## 5.1 Ingestão e parsing
+1. Ingestão por `pacote_hex` válido 14B cria pendência quando sem alimento.
+2. Ingestão por `pacote_hex` válido 20B cria pendência quando sem alimento.
+3. `pacote_hex` inválido retorna erro 400.
+4. `peso` manual com unidade válida é convertido corretamente.
+
+## 5.2 Deduplicação e idempotência
+5. Mesmo payload em janela curta não duplica pendência.
+6. Payload com pequena variação de peso fora da regra cria novo item.
+
+## 5.3 Associação e descarte
+7. Associar pendência cria `RegistroAlimentar` e muda status.
+8. Associar pendência inexistente retorna 404.
+9. Associar pendência já associada retorna 400.
+10. Descartar pendência muda status sem exclusão física.
+11. Descartar pendência já associada retorna 400.
+
+## 5.4 Segurança e isolamento
+12. Usuário A não pode listar/associar/descartar pendências do usuário B.
+13. Endpoint BLE exige autenticação.
+14. Limite de taxa aplicado quando habilitado.
+
+## 5.5 Regressão funcional
+15. Fluxo legado de diário continua funcionando.
+16. Resumo diário inclui registros originados por BLE.
+
+---
+
+## 6) Definição de pronto (DoD)
+
+1. Todas as histórias da fase ativa com testes automatizados passando.
+2. Sem regressão nos endpoints legados do diário.
+3. Erros e payloads documentados.
+4. Logs e métricas mínimas disponíveis em ambiente de homologação.
+
+---
+
+## 7) Ordem de PR sugerida
+
+1. PR-1: deduplicação + validações de ingestão.
+2. PR-2: atomicidade de associação/descarte + testes E2E.
+3. PR-3: rate limit + auditoria/métricas.
+4. PR-4: extensão TBCA na associação (se habilitada no roadmap atual).
+
+---
+
+## 8) Resumo executivo
+
+O módulo BLE já está tecnicamente avançado no projeto e pode ser fechado com uma iteração curta focada em robustez operacional. O plano acima reduz risco de duplicidade, melhora segurança e cria previsibilidade para produção sem quebrar o fluxo legado.
