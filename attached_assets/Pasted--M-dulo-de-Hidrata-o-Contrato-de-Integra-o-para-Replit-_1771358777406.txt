@@ -1,0 +1,337 @@
+# Módulo de Hidratação — Contrato de Integração para Replit
+
+Projeto: UNIO Backend  
+Módulo: Hidratação  
+Versão: 1.0  
+Data: 17 de Fevereiro de 2026  
+Status: Endpoints implementados no backend
+
+---
+
+## 1. Objetivo deste documento
+
+Este documento é o handoff técnico para implementação no Replit (cliente ou camada de integração), com foco em **consumir os endpoints já criados** no backend do módulo de Hidratação.
+
+Inclui:
+
+- contrato das rotas;
+- formato real de sucesso e erro;
+- fluxo recomendado de chamadas;
+- checklist mínimo de implementação.
+
+---
+
+## 2. Base da API
+
+- Base URL (staging): `https://staging.unio.tec.br`
+- Prefixo do módulo: `/api/hidratacao`
+- Autenticação: `Bearer JWT` no header `Authorization`
+
+Exemplo:
+
+`Authorization: Bearer <ACCESS_TOKEN>`
+
+---
+
+## 3. Regras gerais de contrato
+
+1. Todas as rotas exigem usuário autenticado (JWT).
+2. Todo dado é isolado por usuário autenticado no backend.
+3. Validações de domínio do módulo retornam **422** com formato:
+
+```json
+{
+  "errors": [
+    {
+      "field": "nome_do_campo",
+      "message": "Mensagem de erro"
+    }
+  ]
+}
+```
+
+4. Erros de isolamento e não encontrado em remoção também seguem `errors[]`:
+   - `403` para acesso negado;
+   - `404` para registro inexistente.
+
+---
+
+## 4. Endpoints implementados
+
+## 4.1 Buscar meta diária
+
+**GET** `/api/hidratacao/meta`
+
+### 200
+
+```json
+{
+  "ml_meta_diaria": 2500,
+  "atualizado_em": "2026-02-17T20:05:00Z"
+}
+```
+
+---
+
+## 4.2 Atualizar meta diária
+
+**PATCH** `/api/hidratacao/meta`
+
+### Request
+
+```json
+{
+  "ml_meta_diaria": 3000
+}
+```
+
+### 200
+
+```json
+{
+  "ml_meta_diaria": 3000,
+  "atualizado_em": "2026-02-17T20:06:00Z",
+  "mensagem": "Meta diária atualizada com sucesso."
+}
+```
+
+### 422 (exemplo)
+
+```json
+{
+  "errors": [
+    {
+      "field": "ml_meta_diaria",
+      "message": "Meta diária deve ser maior que zero."
+    }
+  ]
+}
+```
+
+Regras:
+
+- obrigatório;
+- inteiro positivo;
+- faixa validada no backend: `500` a `10000`.
+
+---
+
+## 4.3 Criar registro de hidratação
+
+**POST** `/api/hidratacao/registros`
+
+### Request
+
+```json
+{
+  "quantidade_ml": 500,
+  "tipo_bebida": "AGUA",
+  "registrado_em": "2026-02-17T20:07:00Z"
+}
+```
+
+Observações:
+
+- `registrado_em` é opcional;
+- se ausente, backend usa horário atual;
+- tipos válidos: `AGUA`, `SUCO`, `CAFE`, `CHA`, `LEITE`, `ISOTONICO`, `OUTRO`.
+
+### 201
+
+```json
+{
+  "id": 123,
+  "quantidade_ml": 500,
+  "tipo_bebida": "AGUA",
+  "registrado_em": "2026-02-17T20:07:00Z",
+  "resumo_dia": {
+    "data": "2026-02-17",
+    "consumido_ml": 1500,
+    "meta_ml": 3000,
+    "restante_ml": 1500,
+    "percentual": 50.0,
+    "atingiu_meta": false
+  },
+  "mensagem": "Registro de hidratação criado com sucesso."
+}
+```
+
+### 422 (exemplo)
+
+```json
+{
+  "errors": [
+    {
+      "field": "quantidade_ml",
+      "message": "Quantidade deve ser maior que zero."
+    }
+  ]
+}
+```
+
+---
+
+## 4.4 Listar registros
+
+**GET** `/api/hidratacao/registros`
+
+Parâmetros opcionais:
+
+- `inicio=YYYY-MM-DD`
+- `fim=YYYY-MM-DD`
+
+Sem parâmetros: retorna registros do dia atual.
+
+### 200
+
+```json
+{
+  "itens": [
+    {
+      "id": 123,
+      "quantidade_ml": 500,
+      "tipo_bebida": "AGUA",
+      "registrado_em": "2026-02-17T20:07:00Z"
+    }
+  ],
+  "total_itens": 1
+}
+```
+
+### 422 (exemplo de intervalo inválido)
+
+```json
+{
+  "errors": [
+    {
+      "field": "periodo",
+      "message": "Parâmetro 'inicio' não pode ser maior que 'fim'."
+    }
+  ]
+}
+```
+
+---
+
+## 4.5 Remover registro
+
+**DELETE** `/api/hidratacao/registros/{registro_id}`
+
+### 200
+
+```json
+{
+  "id": 123,
+  "removido": true,
+  "resumo_dia": {
+    "data": "2026-02-17",
+    "consumido_ml": 1000,
+    "meta_ml": 3000,
+    "restante_ml": 2000,
+    "percentual": 33.33,
+    "atingiu_meta": false
+  },
+  "mensagem": "Registro removido com sucesso."
+}
+```
+
+### 403
+
+```json
+{
+  "errors": [
+    {
+      "field": "registro_id",
+      "message": "Acesso negado ao registro informado."
+    }
+  ]
+}
+```
+
+### 404
+
+```json
+{
+  "errors": [
+    {
+      "field": "registro_id",
+      "message": "Registro não encontrado."
+    }
+  ]
+}
+```
+
+---
+
+## 4.6 Buscar resumo diário
+
+**GET** `/api/hidratacao/resumo`
+
+Parâmetro opcional:
+
+- `data=YYYY-MM-DD`
+
+### 200
+
+```json
+{
+  "data": "2026-02-17",
+  "consumido_ml": 1000,
+  "meta_ml": 3000,
+  "restante_ml": 2000,
+  "percentual": 33.33,
+  "atingiu_meta": false
+}
+```
+
+---
+
+## 5. Fluxo recomendado para implementação no Replit
+
+1. Ao abrir tela de hidratação:
+   - buscar `GET /meta`;
+   - buscar `GET /resumo`;
+   - buscar `GET /registros`.
+
+2. Ao salvar ingestão:
+   - enviar `POST /registros`;
+   - usar `resumo_dia` da resposta para atualizar UI imediatamente.
+
+3. Ao remover ingestão:
+   - enviar `DELETE /registros/{id}`;
+   - usar `resumo_dia` da resposta para atualizar UI imediatamente.
+
+4. Ao alterar meta:
+   - enviar `PATCH /meta`;
+   - recarregar ou atualizar localmente o resumo.
+
+5. Tratamento de erro:
+   - mapear `errors[0].message` para feedback de formulário;
+   - tratar `401` como sessão expirada;
+   - tratar `403`/`404` em remoção com mensagem amigável.
+
+---
+
+## 6. Checklist mínimo de entrega no Replit
+
+- [ ] Cliente HTTP com JWT em todas as rotas do módulo;
+- [ ] Implementação das 6 rotas acima;
+- [ ] Estados de carregando, vazio, erro e sucesso;
+- [ ] Atualização em tempo real de lista + resumo + meta sem refresh completo;
+- [ ] Tratamento padronizado de `422` por campo (`errors[]`).
+
+---
+
+## 7. Validação rápida em staging
+
+Base para testes manuais:
+
+- OpenAPI: `https://staging.unio.tec.br/api/openapi.json`
+- Documentação: `https://staging.unio.tec.br/api/docs`
+
+Rotas confirmadas em staging:
+
+- `/api/hidratacao/meta`
+- `/api/hidratacao/registros`
+- `/api/hidratacao/registros/{registro_id}`
+- `/api/hidratacao/resumo`
