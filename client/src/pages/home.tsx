@@ -34,6 +34,9 @@ export default function HomeScreen() {
     enabled: !!userId,
   });
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+
   const hydrationMl = hydrationData?.totalMl ?? 0;
   const hydrationGoal = hydrationData?.goal ?? 2500;
   const hydrationL = (hydrationMl / 1000).toFixed(1);
@@ -50,14 +53,14 @@ export default function HomeScreen() {
               onClick={() => setLocation("/profile")}
               className="w-10 h-10 rounded-full bg-[#E8EBE5] overflow-hidden cursor-pointer active:scale-95 transition-transform"
             >
-               <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Pedro" alt="User" />
+               <img src={user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.displayName || "user"}`} alt="User" />
             </div>
             <div 
               onClick={() => setLocation("/profile")}
               className="cursor-pointer"
             >
-              <p className="text-xs text-[#8B9286] font-medium uppercase tracking-wider">Bom dia,</p>
-              <h1 className="font-display text-xl text-[#2F5641]">Pedro</h1>
+              <p className="text-xs text-[#8B9286] font-medium uppercase tracking-wider">{greeting},</p>
+              <h1 className="font-display text-xl text-[#2F5641]" data-testid="text-username">{user?.displayName || "Usuário"}</h1>
             </div>
           </div>
           <button className="relative p-2 text-[#2F5641]">

@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface ProfileData {
   displayName: string | null;
@@ -60,6 +60,7 @@ function isoToDisplay(iso: string | null): string {
 export default function ProfileScreen() {
   const [, setLocation] = useLocation();
   const { user, logout, refreshUser } = useAuth();
+  const queryClient = useQueryClient();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -115,6 +116,7 @@ export default function ProfileScreen() {
     },
     onSuccess: async (data) => {
       setFieldErrors({});
+      queryClient.setQueryData(["profile"], data);
       await refreshUser();
       const p = data;
       setForm({
