@@ -13,6 +13,9 @@ import {
   insertFoodStockSchema,
   insertPurchaseRecordSchema,
   insertHydrationRecordSchema,
+  createHydrationSchema,
+  updateMetaSchema,
+  BEVERAGE_TYPES,
   syncPullQuerySchema,
   syncPushRequestSchema,
   updateProfileSchema,
@@ -642,32 +645,135 @@ export async function registerRoutes(
     }
   });
 
-  // ── Hydration Records ──
-  app.get("/api/users/:userId/hydration/today", requireAuth, async (req, res) => {
-    if (req.params.userId !== getUserId(req)) return res.status(403).json({ error: "Acesso negado." });
+  // ── Hidratação ──
+
+  // GET /api/hidratacao/meta
+  app.get("/api/hidratacao/meta", requireAuth, async (req, res) => {
     try {
-      const result = await storage.getHydrationTotalToday(req.params.userId);
+      const userId = getUserId(req);
+      const meta = await storage.getHydrationMeta(userId);
+      res.json(meta);
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar meta de hidratação." });
+    }
+  });
+
+  // PATCH /api/hidratacao/meta
+  app.patch("/api/hidratacao/meta", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const parsed = updateMetaSchema.parse(req.body);
+      const result = await storage.updateHydrationMeta(userId, parsed.ml_meta_diaria);
       res.json(result);
     } catch (err) {
-      const { status, body } = handleZodError(err);
-      res.status(status).json(body);
+      const { status, body } = handleZodFieldErrors(err);
+      res.status(status === 500 ? 500 : 422).json(body);
     }
   });
 
-  app.post("/api/hydration", requireAuth, async (req, res) => {
+  // POST /api/hidratacao/registros
+  app.post("/api/hidratacao/registros", requireAuth, async (req, res) => {
     try {
-      const data = insertHydrationRecordSchema.parse(coerceDates({ ...req.body, userId: getUserId(req) }));
-      const record = await storage.createHydrationRecord(data);
-      res.status(201).json(record);
+      const userId = getUserId(req);
+      const body = { ...req.body };
+      if (body.tipo_bebida && typeof body.tipo_bebida === "string") {
+        body.tipo_bebida = body.tipo_bebida.toUpperCase();
+      }
+      const parsed = createHydrationSchema.parse(body);
+
+      const record = await storage.createHydrationRecord({
+        userId,
+        amountMl: parsed.quantidade_ml,
+        beverageType: parsed.tipo_bebida ?? "AGUA",
+        recordedAt: parsed.registrado_em ? new Date(parsed.registrado_em) : undefined,
+      });
+
+      const recordDate = (record.recordedAt ?? new Date()).toISOString().slice(0, 10);
+      const resumo = await storage.getHydrationSummary(userId, recordDate);
+
+      res.status(201).json({
+        id: record.id,
+        quantidade_ml: record.amountMl,
+        tipo_bebida: record.beverageType,
+        registrado_em: record.recordedAt?.toISOString() ?? new Date().toISOString(),
+        resumo_dia: resumo,
+        mensagem: "Registro de hidratação criado com sucesso.",
+      });
     } catch (err) {
-      const { status, body } = handleZodError(err);
-      res.status(status).json(body);
+      const { status, body } = handleZodFieldErrors(err);
+      res.status(status === 500 ? 500 : 422).json(body);
     }
   });
 
-  app.delete("/api/hydration/:id", requireAuth, async (req, res) => {
-    await storage.softDeleteHydrationRecord(req.params.id);
-    res.status(204).end();
+  // GET /api/hidratacao/registros?inicio=&fim=
+  app.get("/api/hidratacao/registros", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const today = new Date().toISOString().slice(0, 10);
+      const inicio = (req.query.inicio as string) || today;
+      const fim = (req.query.fim as string) || today;
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) {
+        return res.status(422).json({ errors: [{ field: "inicio/fim", message: "Datas devem estar no formato YYYY-MM-DD." }] });
+      }
+
+      const records = await storage.getHydrationRecordsByRange(userId, inicio, fim);
+      const itens = records.map((r) => ({
+        id: r.id,
+        quantidade_ml: r.amountMl,
+        tipo_bebida: r.beverageType,
+        registrado_em: r.recordedAt?.toISOString() ?? "",
+      }));
+
+      res.json({ itens, total_itens: itens.length });
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar registros." });
+    }
+  });
+
+  // DELETE /api/hidratacao/registros/:id
+  app.delete("/api/hidratacao/registros/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const record = await storage.getHydrationRecord(req.params.id);
+
+      if (!record) {
+        return res.status(404).json({ error: "Registro não encontrado." });
+      }
+      if (record.userId !== userId) {
+        return res.status(403).json({ error: "Acesso negado." });
+      }
+
+      const recordDate = (record.recordedAt ?? new Date()).toISOString().slice(0, 10);
+      await storage.softDeleteHydrationRecord(req.params.id);
+      const resumo = await storage.getHydrationSummary(userId, recordDate);
+
+      res.json({
+        id: req.params.id,
+        removido: true,
+        resumo_dia: resumo,
+        mensagem: "Registro removido com sucesso.",
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao remover registro." });
+    }
+  });
+
+  // GET /api/hidratacao/resumo?data=
+  app.get("/api/hidratacao/resumo", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const date = (req.query.data as string) || new Date().toISOString().slice(0, 10);
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(422).json({ errors: [{ field: "data", message: "Data deve estar no formato YYYY-MM-DD." }] });
+      }
+
+      const resumo = await storage.getHydrationSummary(userId, date);
+      res.json(resumo);
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar resumo." });
+    }
   });
 
   // ── Sync Pull (GET /api/sync/pull) ──

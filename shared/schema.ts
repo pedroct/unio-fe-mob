@@ -31,6 +31,8 @@ export const users = pgTable(
     sex: text("sex"),
     activityLevel: text("activity_level"),
     scaleMac: text("scale_mac"),
+    mlMetaDiaria: integer("ml_meta_diaria").notNull().default(2500),
+    metaAtualizadaEm: timestamp("meta_atualizada_em", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -260,8 +262,7 @@ export const hydrationRecords = pgTable(
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: uuid("user_id").notNull().references(() => users.id),
     amountMl: integer("amount_ml").notNull(),
-    beverageType: text("beverage_type").notNull().default("water"),
-    label: text("label").notNull().default("Água"),
+    beverageType: text("beverage_type").notNull().default("AGUA"),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -271,6 +272,7 @@ export const hydrationRecords = pgTable(
     index("idx_hydration_user_id").on(t.userId),
     index("idx_hydration_updated_at").on(t.updatedAt),
     index("idx_hydration_recorded_at").on(t.recordedAt),
+    index("idx_hydration_user_recorded").on(t.userId, t.recordedAt),
   ]
 );
 
@@ -371,6 +373,18 @@ export const insertHydrationRecordSchema = createInsertSchema(hydrationRecords).
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
+});
+
+export const BEVERAGE_TYPES = ["AGUA", "SUCO", "CAFE", "CHA", "LEITE", "ISOTONICO", "OUTRO"] as const;
+
+export const createHydrationSchema = z.object({
+  quantidade_ml: z.number().int().positive("Quantidade deve ser maior que zero."),
+  tipo_bebida: z.enum(BEVERAGE_TYPES, { message: "Tipo de bebida inválido." }).default("AGUA"),
+  registrado_em: z.string().datetime({ offset: true }).optional().nullable(),
+});
+
+export const updateMetaSchema = z.object({
+  ml_meta_diaria: z.number().int().min(500, "Meta deve ser no mínimo 500ml.").max(10000, "Meta deve ser no máximo 10000ml."),
 });
 
 // ---------------------------------------------------------------------------

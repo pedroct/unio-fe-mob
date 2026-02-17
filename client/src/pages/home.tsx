@@ -23,12 +23,15 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const userId = user?.id ?? "";
 
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
   const { data: hydrationData } = useQuery({
-    queryKey: ["hydration", "today", userId],
+    queryKey: ["hydration", "resumo", today],
     queryFn: async () => {
-      const res = await apiFetch(`/api/users/${userId}/hydration/today`);
-      if (!res.ok) throw new Error("Failed to fetch hydration");
-      return res.json() as Promise<{ totalMl: number; goal: number }>;
+      const res = await apiFetch(`/api/hidratacao/resumo?data=${today}`);
+      if (!res.ok) throw new Error("Erro ao buscar resumo de hidratação");
+      return res.json() as Promise<{ consumido_ml: number; meta_ml: number; restante_ml: number; percentual: number; atingiu_meta: boolean }>;
     },
     refetchOnWindowFocus: true,
     enabled: !!userId,
@@ -37,8 +40,8 @@ export default function HomeScreen() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
 
-  const hydrationMl = hydrationData?.totalMl ?? 0;
-  const hydrationGoal = hydrationData?.goal ?? 2500;
+  const hydrationMl = hydrationData?.consumido_ml ?? 0;
+  const hydrationGoal = hydrationData?.meta_ml ?? 2500;
   const hydrationL = (hydrationMl / 1000).toFixed(1);
   const hydrationGoalL = (hydrationGoal / 1000).toFixed(1);
   const hydrationDots = Math.min(Math.ceil((hydrationMl / hydrationGoal) * 5), 5);

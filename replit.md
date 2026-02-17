@@ -55,11 +55,12 @@ Preferred communication style: Simple, everyday language.
 - **Schema Location:** `shared/schema.ts` — shared between client and server
 - **Migrations:** Drizzle Kit with `drizzle-kit push` for schema sync
 - **Tables:**
-  - `users` — User profiles (UUID primary keys, soft delete, audit fields for auth, scaleMac for BLE scale)
+  - `users` — User profiles (UUID primary keys, soft delete, audit fields for auth, scaleMac for BLE scale, mlMetaDiaria/metaAtualizadaEm for hydration goal)
   - `auth_sessions` — JWT refresh token sessions (hashed tokens, device info, expiry)
   - `body_records` — Weight/body composition measurements
   - `foods` — Nutritional database (per-serving macro data)
   - `food_stock` — Pantry inventory tracking
+  - `hydration_records` — Water/beverage intake tracking (soft delete via deletedAt, beverageType enum AGUA/SUCO/CAFE/CHA/LEITE/ISOTONICO/OUTRO)
   - `sync_log` — Change tracking for offline sync
 - **Seed Data:** `server/seed.ts` provides 15 common Brazilian foods and a default user
 
@@ -79,7 +80,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Key Conventions
 - All database IDs use UUIDs (`gen_random_uuid()`)
-- Soft deletes via `is_deleted` boolean column
+- Soft deletes via `is_deleted` boolean column (older tables) or `deleted_at` timestamp (newer tables like hydration_records)
 - Timestamps with timezone (`created_at`, `updated_at`) on all tables
 - All UX copy is in Brazilian Portuguese (PT-BR)
 - Path aliases: `@/` → `client/src/`, `@shared/` → `shared/`, `@assets/` → `attached_assets/`

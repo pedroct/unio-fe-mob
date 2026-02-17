@@ -111,10 +111,20 @@ export interface IStorage {
   getBodyRecordsByUserWithRange(userId: string, range?: string): Promise<BodyRecord[]>;
   getLatestBodyRecord(userId: string): Promise<BodyRecord | undefined>;
 
-  createHydrationRecord(record: InsertHydrationRecord): Promise<HydrationRecord>;
-  getHydrationByUserToday(userId: string): Promise<HydrationRecord[]>;
-  getHydrationTotalToday(userId: string): Promise<{ totalMl: number; goal: number; records: HydrationRecord[] }>;
+  getHydrationMeta(userId: string): Promise<{ ml_meta_diaria: number; atualizado_em: string }>;
+  updateHydrationMeta(userId: string, mlMetaDiaria: number): Promise<{ ml_meta_diaria: number; atualizado_em: string; mensagem: string }>;
+  createHydrationRecord(data: { userId: string; amountMl: number; beverageType: string; recordedAt?: Date }): Promise<HydrationRecord>;
+  getHydrationRecordsByRange(userId: string, inicio: string, fim: string): Promise<HydrationRecord[]>;
+  getHydrationRecord(id: string): Promise<HydrationRecord | undefined>;
   softDeleteHydrationRecord(id: string): Promise<void>;
+  getHydrationSummary(userId: string, date: string): Promise<{
+    data: string;
+    consumido_ml: number;
+    meta_ml: number;
+    restante_ml: number;
+    percentual: number;
+    atingiu_meta: boolean;
+  }>;
 
   syncPull(opts: {
     cursor?: string;
@@ -547,43 +557,94 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
-  // ── Hydration Records ──
-  async createHydrationRecord(data: InsertHydrationRecord): Promise<HydrationRecord> {
-    const [r] = await db.insert(hydrationRecords).values(data).returning();
+  // ── Hydration (new spec) ──
+  async getHydrationMeta(userId: string) {
+    const [user] = await db.select({ mlMetaDiaria: users.mlMetaDiaria, metaAtualizadaEm: users.metaAtualizadaEm }).from(users).where(eq(users.id, userId));
+    return {
+      ml_meta_diaria: user?.mlMetaDiaria ?? 2500,
+      atualizado_em: user?.metaAtualizadaEm?.toISOString() ?? new Date().toISOString(),
+    };
+  }
+
+  async updateHydrationMeta(userId: string, mlMetaDiaria: number) {
+    const now = new Date();
+    await db.update(users).set({ mlMetaDiaria: mlMetaDiaria, metaAtualizadaEm: now, updatedAt: now } as any).where(eq(users.id, userId));
+    return {
+      ml_meta_diaria: mlMetaDiaria,
+      atualizado_em: now.toISOString(),
+      mensagem: "Meta diária atualizada com sucesso.",
+    };
+  }
+
+  async createHydrationRecord(data: { userId: string; amountMl: number; beverageType: string; recordedAt?: Date }): Promise<HydrationRecord> {
+    const [r] = await db.insert(hydrationRecords).values({
+      userId: data.userId,
+      amountMl: data.amountMl,
+      beverageType: data.beverageType,
+      recordedAt: data.recordedAt ?? new Date(),
+    }).returning();
     await this.logSync("hydration_records", r.id, "create", r);
     return r;
   }
 
-  async getHydrationByUserToday(userId: string): Promise<HydrationRecord[]> {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
+  async getHydrationRecordsByRange(userId: string, inicio: string, fim: string): Promise<HydrationRecord[]> {
+    const startDate = new Date(inicio + "T00:00:00.000Z");
+    const endDate = new Date(fim + "T23:59:59.999Z");
     return db
       .select()
       .from(hydrationRecords)
       .where(
         and(
           eq(hydrationRecords.userId, userId),
-          gte(hydrationRecords.recordedAt, todayStart),
-          lt(hydrationRecords.recordedAt, todayEnd),
-          notDeleted(hydrationRecords)
+          gte(hydrationRecords.recordedAt, startDate),
+          lt(hydrationRecords.recordedAt, new Date(endDate.getTime() + 1)),
+          isNull(hydrationRecords.deletedAt)
         )
       )
       .orderBy(desc(hydrationRecords.recordedAt));
   }
 
-  async getHydrationTotalToday(userId: string): Promise<{ totalMl: number; goal: number; records: HydrationRecord[] }> {
-    const records = await this.getHydrationByUserToday(userId);
-    const totalMl = records.reduce((sum, r) => sum + r.amountMl, 0);
-    return { totalMl, goal: 2500, records };
+  async getHydrationRecord(id: string): Promise<HydrationRecord | undefined> {
+    const [r] = await db.select().from(hydrationRecords).where(and(eq(hydrationRecords.id, id), isNull(hydrationRecords.deletedAt)));
+    return r;
   }
 
   async softDeleteHydrationRecord(id: string): Promise<void> {
     const now = new Date();
     await db.update(hydrationRecords).set({ deletedAt: now, updatedAt: now }).where(eq(hydrationRecords.id, id));
     await this.logSync("hydration_records", id, "delete", null);
+  }
+
+  async getHydrationSummary(userId: string, date: string) {
+    const startDate = new Date(date + "T00:00:00.000Z");
+    const endDate = new Date(date + "T23:59:59.999Z");
+
+    const records = await db
+      .select()
+      .from(hydrationRecords)
+      .where(
+        and(
+          eq(hydrationRecords.userId, userId),
+          gte(hydrationRecords.recordedAt, startDate),
+          lt(hydrationRecords.recordedAt, new Date(endDate.getTime() + 1)),
+          isNull(hydrationRecords.deletedAt)
+        )
+      );
+
+    const consumido_ml = records.reduce((sum, r) => sum + r.amountMl, 0);
+    const meta = await this.getHydrationMeta(userId);
+    const meta_ml = meta.ml_meta_diaria;
+    const restante_ml = Math.max(0, meta_ml - consumido_ml);
+    const percentual = meta_ml > 0 ? Math.round((consumido_ml / meta_ml) * 10000) / 100 : 0;
+
+    return {
+      data: date,
+      consumido_ml,
+      meta_ml,
+      restante_ml,
+      percentual,
+      atingiu_meta: consumido_ml >= meta_ml,
+    };
   }
 
   // ── Sync Pull (cursor-based, deterministic ordering) ──
