@@ -1,0 +1,302 @@
+# Nutrição Avançada - Matriz de Aderência (Backend Atual x Contrato Alvo)
+
+**Versão:** 1.0  
+**Data:** 17 de Fevereiro de 2026  
+**Status:** Em definição para convergência Backend + Frontend
+
+---
+
+## 1) Objetivo
+
+Este documento consolida:
+
+1. Estrutura de dados e APIs **já existentes** no backend de Nutrição.
+2. **Gaps de aderência** para o cenário de Nutrição avançada.
+3. **Contrato alvo** para integração real com:
+   - base externa/TBCA,
+   - diário alimentar,
+   - balança de cozinha BLE.
+
+---
+
+## 2) Escopo de referência (backend atual)
+
+### 2.1 Catálogo legado (usado no diário)
+
+Modelos:
+- `Alimento`
+- `Refeicao`
+- `RegistroAlimentar`
+- `PesagemPendente`
+
+Características principais:
+- `RegistroAlimentar` referencia `Alimento` por FK direta.
+- Nutrientes do `Alimento` são por 100g/100ml (campos fixos: calorias, carboidratos, proteínas, gorduras, fibras).
+- Fluxo BLE de cozinha já persistido com fila de pendências (`PesagemPendente`).
+
+### 2.2 Catálogo TBCA/normalizado (paralelo ao diário)
+
+Modelos:
+- `GrupoAlimentar`
+- `TipoAlimento`
+- `Nutriente`
+- `AlimentoTBCA`
+- `AlimentoNutriente`
+- `LoteImportacao`
+- `LogImportacaoAlimento`
+
+Características principais:
+- Estrutura normalizada, UUID, soft-delete no `AlimentoTBCA`.
+- Composição nutricional flexível por nutrientes (não limitada aos 5 macros do legado).
+- Endpoints próprios sob `/api/nutricao/tbca/*`.
+
+### 2.3 Rotas reais disponíveis (hoje)
+
+Base geral: `/api/nutricao`
+
+Legado/diário:
+- `GET /alimentos/buscar`
+- `GET /alimentos/codigo-barras/{codigo}`
+- `POST /alimentos`
+- `GET /refeicoes`
+- `POST /refeicoes/criar-padrao`
+- `POST /refeicoes`
+- `POST /diario/registrar`
+- `GET /diario/registros`
+- `DELETE /diario/registros/{registro_id}`
+- `POST /diario/balanca-cozinha`
+- `GET /diario/pesagens-pendentes`
+- `POST /diario/pesagens-pendentes/{pesagem_id}/associar`
+- `DELETE /diario/pesagens-pendentes/{pesagem_id}`
+- `GET /resumo-hoje`
+- `GET /meta-calorica`
+- `POST /meta-calorica/recalcular`
+
+TBCA:
+- `GET /tbca/alimentos`
+- `GET /tbca/alimentos/{alimento_id}`
+- `GET /tbca/alimentos/codigo/{codigo_tbca}`
+- `POST /tbca/calcular`
+- `GET /tbca/grupos`
+- `GET /tbca/tipos`
+- `GET /tbca/nutrientes`
+
+---
+
+## 3) Matriz de aderência
+
+## Legenda
+- ✅ Aderente: já implementado e utilizável no fluxo final.
+- ⚠️ Parcial: existe, mas sem fechamento ponta a ponta.
+- ❌ Gap: não implementado no backend atual.
+
+| Capacidade | Backend atual | Situação | Observação |
+|---|---|---|---|
+| Buscar alimento para diário por texto | `GET /alimentos/buscar` (legado) | ✅ | Usa tabela `Alimento`. |
+| Buscar alimento por código de barras | `GET /alimentos/codigo-barras/{codigo}` | ✅ | Também no legado. |
+| Registrar consumo no diário | `POST /diario/registrar` | ✅ | Registra com FK em `Alimento`. |
+| Registrar via balança BLE com alimento identificado | `POST /diario/balanca-cozinha` | ✅ | Converte unidade para gramas e cria registro. |
+| Registrar via balança BLE sem alimento | `PesagemPendente` + rotas de pendência | ✅ | Fila e associação posterior já prontas. |
+| Catálogo nutricional extenso (TBCA) | `/tbca/*` | ✅ | Catálogo paralelo completo. |
+| Usar item TBCA diretamente no diário | Não existe rota/fk direta | ❌ | Diário não referencia `AlimentoTBCA`. |
+| Unificar busca em um endpoint único (legado+TBCA) | Não existe | ❌ | Frontend precisa hoje de duas integrações separadas. |
+| Converter item TBCA em item consumível do diário | Não existe endpoint explícito | ❌ | Necessário para convergência de UX. |
+| Rastreabilidade de origem do alimento no diário (TBCA x manual) | Parcial (`origem` só do registro) | ⚠️ | Falta vínculo explícito do alimento consumido com fonte TBCA. |
+
+---
+
+## 4) Gap estrutural principal
+
+Hoje existem **dois domínios válidos**, porém desconectados no ponto de consumo:
+
+1. Domínio de consumo (diário) baseado em `Alimento` legado.
+2. Domínio de composição avançada baseado em `AlimentoTBCA`.
+
+Isso cria divergência com frontends que já assumem “selecionar TBCA e registrar no diário” em fluxo único.
+
+---
+
+## 5) Contrato alvo recomendado (sem quebrar legado)
+
+## 5.1 Estratégia
+
+Manter os endpoints legados e adicionar uma camada de convergência:
+
+- **Não remover** `Alimento` e `RegistroAlimentar` neste momento.
+- Permitir registrar diário com origem TBCA via ponte explícita.
+- Preservar compatibilidade do app atual enquanto frontend migra para o contrato unificado.
+
+## 5.2 Ajuste mínimo de modelo (recomendado)
+
+Adicionar no modelo `Alimento`:
+- `alimento_tbca` (FK opcional para `AlimentoTBCA`, `null=True`, `blank=True`, `on_delete=SET_NULL`)
+
+Objetivo:
+- transformar `Alimento` em “representação consumível” para diário;
+- manter vínculo de proveniência nutricional quando vier da TBCA.
+
+## 5.3 Endpoints novos (contrato alvo)
+
+### A) Buscar alimentos unificado
+
+`GET /api/nutricao/alimentos-unificados/buscar?q=&fonte=&limite=&offset=`
+
+Filtros:
+- `fonte=LEGADO|TBCA|TODOS`
+
+Resposta sugerida:
+
+```json
+{
+  "itens": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "tipo_id": "TBCA",
+      "descricao": "Abacate, cru",
+      "marca": "",
+      "codigo_barras": null,
+      "fonte_dados": "TBCA",
+      "grupo": "C",
+      "resumo_macros_100g": {
+        "calorias": 96.0,
+        "carboidratos": 6.0,
+        "proteinas": 1.2,
+        "gorduras": 8.4,
+        "fibras": 6.3
+      }
+    }
+  ],
+  "total": 1
+}
+```
+
+### B) Preparar alimento TBCA para consumo no diário
+
+`POST /api/nutricao/alimentos/preparar-para-consumo`
+
+Request:
+
+```json
+{
+  "alimento_tbca_id": "550e8400-e29b-41d4-a716-446655440000",
+  "descricao_customizada": "Abacate"
+}
+```
+
+Comportamento:
+- procura/gera `Alimento` legado correspondente;
+- grava vínculo `Alimento.alimento_tbca`;
+- retorna `alimento_id` consumível no diário.
+
+Response:
+
+```json
+{
+  "alimento_id": 1234,
+  "alimento_tbca_id": "550e8400-e29b-41d4-a716-446655440000",
+  "nome": "Abacate",
+  "fonte_dados": "TBCA"
+}
+```
+
+### C) Registrar consumo avançado (TBCA ou legado)
+
+`POST /api/nutricao/diario/registrar-avancado`
+
+Request (uma das opções):
+
+```json
+{
+  "alimento_id": 1234,
+  "quantidade": 150,
+  "refeicao_id": 2,
+  "origem": "MANUAL"
+}
+```
+
+ou
+
+```json
+{
+  "alimento_tbca_id": "550e8400-e29b-41d4-a716-446655440000",
+  "quantidade": 150,
+  "refeicao_id": 2,
+  "origem": "MANUAL"
+}
+```
+
+Regra:
+- se vier `alimento_tbca_id`, backend chama a preparação automática e registra normalmente no diário.
+
+---
+
+## 6) Fluxo BLE unificado (contrato alvo)
+
+## 6.1 Fluxo já aderente hoje
+
+1. Balança envia pacote/peso para `POST /diario/balanca-cozinha`.
+2. Backend converte unidade para gramas.
+3. Se alimento conhecido, cria `RegistroAlimentar`.
+4. Se alimento não conhecido, cria `PesagemPendente`.
+
+## 6.2 Ajuste para modo avançado
+
+No endpoint de associação de pesagem:
+- aceitar também `alimento_tbca_id` além de `alimento_id`.
+- se TBCA for informado, preparar alimento para consumo e concluir associação.
+
+Request alvo para associação:
+
+```json
+{
+  "alimento_id": null,
+  "alimento_tbca_id": "550e8400-e29b-41d4-a716-446655440000",
+  "refeicao_id": 2,
+  "observacao": "pesagem pós-treino"
+}
+```
+
+---
+
+## 7) Critérios de aceite para convergência
+
+1. Usuário consegue buscar em catálogo unificado e registrar no diário sem saber se a origem é TBCA ou legado.
+2. Registro via BLE sem alimento continua indo para fila de pendências.
+3. Associação da pendência aceita alimento TBCA sem conversão manual no app.
+4. `GET /diario/registros` retorna consistência de macros com o que foi registrado.
+5. Compatibilidade retroativa: endpoints legados continuam funcionando.
+
+---
+
+## 8) Riscos e mitigação
+
+### Risco 1: duplicidade de alimentos no legado
+Mitigação:
+- regra de deduplicação por `(nome normalizado, marca, código_barras)` ao preparar para consumo.
+
+### Risco 2: divergência de macros entre TBCA e legado
+Mitigação:
+- ao preparar item TBCA para consumo, persistir snapshot dos macros principais no `Alimento` legado.
+
+### Risco 3: quebra de frontend atual
+Mitigação:
+- rollout em duas fases:
+  - Fase 1: novos endpoints paralelos.
+  - Fase 2: frontend migra e legado permanece de fallback.
+
+---
+
+## 9) Ordem de implementação sugerida
+
+1. Migração de modelo (`Alimento.alimento_tbca` opcional).
+2. Endpoint `preparar-para-consumo`.
+3. Endpoint `registrar-avancado`.
+4. Extensão de associação de pesagem para `alimento_tbca_id`.
+5. Endpoint de busca unificada.
+6. Ajuste frontend para usar contrato alvo em produção.
+
+---
+
+## 10) Resumo executivo
+
+O backend já possui os blocos críticos de Nutrição avançada (TBCA robusto + diário + BLE), mas com **fronteira de integração incompleta** entre TBCA e consumo diário. A convergência recomendada é incremental, mantendo compatibilidade e adicionando uma ponte explícita TBCA→`Alimento` para viabilizar fluxo único no app.
