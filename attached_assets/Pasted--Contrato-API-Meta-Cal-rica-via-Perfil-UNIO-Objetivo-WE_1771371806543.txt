@@ -1,0 +1,237 @@
+# Contrato API — Meta Calórica (via Perfil) — UNIO
+
+**Objetivo (WEB/Replit):** a meta calórica passa a ser definida manualmente no **Perfil** (`meta_calorias`).
+
+- Quando `meta_calorias` estiver preenchida e `> 0`, o backend passa a considerar essa meta como **fonte de verdade**.
+- Nesse caso, a Nutrição retorna `fonte_dados = "perfil"` e **não aplica déficit**.
+- Quando `meta_calorias` estiver `null` (ou `0`), o backend volta a usar o cálculo automático (Xiaomi/estimativa).
+
+## Base URL
+
+- Staging: `https://staging.unio.tec.br`
+
+## Headers
+
+- `Content-Type: application/json`
+- `Authorization: Bearer <access_token>` (obrigatório nos endpoints autenticados)
+
+## Autenticação
+
+### `POST /api/auth/pair`
+
+**Request**
+```json
+{
+  "email": "email@exemplo.com",
+  "password": "senha"
+}
+```
+
+**200 Response**
+```json
+{
+  "email": "email@exemplo.com",
+  "refresh": "<jwt_refresh>",
+  "access": "<jwt_access>"
+}
+```
+
+---
+
+## Perfil (Núcleo)
+
+### `GET /api/nucleo/perfil`
+
+**Auth:** sim (JWT)
+
+**200 Response (PerfilSchema — campos relevantes)**
+```json
+{
+  "id": 1,
+  "usuario_id": 1,
+  "tipo": "paciente",
+  "fator_atividade": "sedentario",
+  "meta_calorias": 4200.0,
+  "idade": 29,
+  "criado_em": "2026-02-17T12:00:00Z"
+}
+```
+
+**404 Response**
+```json
+{
+  "mensagem": "Perfil não encontrado"
+}
+```
+
+**Erros comuns**
+- `401 Unauthorized`: sem token/ token inválido.
+
+### `PATCH /api/nucleo/perfil`
+
+**Auth:** sim (JWT)
+
+**Uso:** definir/alterar a meta manual.
+
+**Request (PerfilAtualizarSchema — exemplo)**
+```json
+{
+  "meta_calorias": 4200
+}
+```
+
+**200 Response (PerfilSchema — campos relevantes)**
+```json
+{
+  "id": 1,
+  "usuario_id": 1,
+  "tipo": "paciente",
+  "fator_atividade": "sedentario",
+  "meta_calorias": 4200.0,
+  "idade": 29,
+  "criado_em": "2026-02-17T12:00:00Z"
+}
+```
+
+**Voltar para cálculo automático (recomendado)**
+
+- Enviar `null`:
+```json
+{
+  "meta_calorias": null
+}
+```
+
+**Alternativa (também tratado como “não configurado”)**
+
+- Enviar `0`:
+```json
+{
+  "meta_calorias": 0
+}
+```
+
+**Erros comuns**
+- `401 Unauthorized`: sem token.
+- `422 Unprocessable Entity`: payload inválido (validação do Ninja/Pydantic).
+
+---
+
+## Nutrição
+
+### `GET /api/nutricao/meta-calorica`
+
+**Auth:** sim (JWT)
+
+**200 Response (MetaCaloricaSchema)**
+```json
+{
+  "tmb": 2100.12,
+  "get": 3200.5,
+  "meta_calorias": 4200.0,
+  "deficit_aplicado": 0.0,
+  "meta_proteinas": 315.0,
+  "meta_carboidratos": 420.0,
+  "meta_gorduras": 140.0,
+  "fator_atividade_usado": "sedentario",
+  "massa_magra_estimada": null,
+  "fonte_dados": "perfil"
+}
+```
+
+**Sem meta manual**
+- `fonte_dados` pode ser `"xiaomi"` (se houver leitura) ou `"estimativa"`.
+
+### `POST /api/nutricao/meta-calorica/recalcular`
+
+**Auth:** sim (JWT)
+
+**Uso:** forçar recálculo do backend.
+
+> Observação: se `meta_calorias` manual estiver configurada, o retorno continua com `fonte_dados="perfil"`.
+
+**200 Response**
+```json
+{
+  "meta": {
+    "tmb": 2100.12,
+    "get": 3200.5,
+    "meta_calorias": 4200.0,
+    "deficit_aplicado": 0.0,
+    "meta_proteinas": 315.0,
+    "meta_carboidratos": 420.0,
+    "meta_gorduras": 140.0,
+    "fator_atividade_usado": "sedentario",
+    "massa_magra_estimada": null,
+    "fonte_dados": "perfil"
+  },
+  "mensagem": "Meta calórica recalculada com sucesso"
+}
+```
+
+### `GET /api/nutricao/resumo-hoje?data=YYYY-MM-DD`
+
+**Auth:** sim (JWT)
+
+**Uso:** Home / resumo do dia (consumido vs meta vs saldo).
+
+- Query `data` é opcional. Sem `data`, o backend retorna o dia atual.
+
+**200 Response (ResumoHojeSchema — recorte relevante)**
+```json
+{
+  "data": "2026-02-17",
+  "consumido": {
+    "calorias": 1330.4,
+    "carboidratos": 120.0,
+    "proteinas": 90.0,
+    "gorduras": 45.0,
+    "fibras": 10.0
+  },
+  "meta": {
+    "calorias": 4200.0,
+    "carboidratos": 420.0,
+    "proteinas": 315.0,
+    "gorduras": 140.0
+  },
+  "saldo": {
+    "calorias": 2869.6,
+    "carboidratos": 300.0,
+    "proteinas": 225.0,
+    "gorduras": 95.0
+  },
+  "percentual_meta": {
+    "calorias": 31.7,
+    "carboidratos": 28.6,
+    "proteinas": 28.6,
+    "gorduras": 32.1
+  },
+  "total_registros": 3,
+  "calculo": {
+    "tmb": 2100.12,
+    "get": 3200.5,
+    "deficit_aplicado": 0.0
+  }
+}
+```
+
+---
+
+## Fluxo recomendado (Replit WEB)
+
+1) `POST /api/auth/pair` → obter `access`
+2) `GET /api/nucleo/perfil` → ler `meta_calorias`
+3) Ao salvar meta (ex.: 4200): `PATCH /api/nucleo/perfil` com `{ "meta_calorias": 4200 }`
+4) Home:
+   - `GET /api/nutricao/resumo-hoje` → usar `meta.calorias` e `saldo.calorias`
+
+---
+
+## Regras importantes
+
+- A meta manual é considerada ativa apenas quando `meta_calorias` está preenchida e `> 0`.
+- Se meta manual ativa, `deficit_aplicado` fica `0.0`.
+- `fonte_dados` indica a origem:
+  - `perfil` (meta manual)
+  - `xiaomi` (com leitura biométrica)
+  - `estimativa` (sem leitura)
