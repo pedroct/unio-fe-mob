@@ -4,8 +4,7 @@ import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-
-const DEFAULT_USER_ID = "5403356d-c894-43f3-846a-513f8e1ad4bb";
+import { useAuth } from "@/lib/auth";
 
 // Mock Data
 const WEIGHT_DATA = [
@@ -20,15 +19,18 @@ const WEIGHT_DATA = [
 
 export default function HomeScreen() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
 
   const { data: hydrationData } = useQuery({
-    queryKey: ["hydration", "today", DEFAULT_USER_ID],
+    queryKey: ["hydration", "today", userId],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${DEFAULT_USER_ID}/hydration/today`);
+      const res = await fetch(`/api/users/${userId}/hydration/today`);
       if (!res.ok) throw new Error("Failed to fetch hydration");
       return res.json() as Promise<{ totalMl: number; goal: number }>;
     },
     refetchOnWindowFocus: true,
+    enabled: !!userId,
   });
 
   const hydrationMl = hydrationData?.totalMl ?? 0;

@@ -4,8 +4,7 @@ import { useLocation } from "wouter";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-
-const DEFAULT_USER_ID = "5403356d-c894-43f3-846a-513f8e1ad4bb";
+import { useAuth } from "@/lib/auth";
 
 const BEVERAGE_TYPES = [
   { id: "water", label: "Água", icon: GlassWater, color: "#3D7A8C" },
@@ -21,6 +20,8 @@ const BEVERAGE_TYPES = [
 export default function HydrationScreen() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualAmount, setManualAmount] = useState("250");
   const [manualType, setManualType] = useState("water");
@@ -28,9 +29,9 @@ export default function HydrationScreen() {
   const [manualTime, setManualTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 
   const { data: hydrationData, isLoading } = useQuery({
-    queryKey: ["hydration", "today", DEFAULT_USER_ID],
+    queryKey: ["hydration", "today", userId],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${DEFAULT_USER_ID}/hydration/today`);
+      const res = await fetch(`/api/users/${userId}/hydration/today`);
       if (!res.ok) throw new Error("Failed to fetch hydration data");
       return res.json() as Promise<{
         totalMl: number;
@@ -45,6 +46,7 @@ export default function HydrationScreen() {
       }>;
     },
     refetchOnWindowFocus: true,
+    enabled: !!userId,
   });
 
   const addMutation = useMutation({
@@ -53,7 +55,7 @@ export default function HydrationScreen() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: DEFAULT_USER_ID,
+          userId: userId,
           amountMl: payload.amountMl,
           beverageType: payload.beverageType,
           label: payload.label,

@@ -34,6 +34,11 @@ Preferred communication style: Simple, everyday language.
 - **Runtime:** Node.js with Express 5
 - **Language:** TypeScript, compiled with tsx for development and esbuild for production
 - **API Pattern:** RESTful JSON API under `/api/*` prefix
+- **Authentication:** Email/password auth with bcrypt + express-session + connect-pg-simple (PostgreSQL session store)
+  - Auth endpoints: POST /api/auth/register, /api/auth/login, /api/auth/logout, GET /api/auth/me
+  - All data routes protected with `requireAuth` middleware
+  - User-scoped routes enforce `req.session.userId` ownership checks
+  - AuthProvider context in `client/src/lib/auth.tsx` with route guards in App.tsx
 - **Validation:** Zod schemas (generated from Drizzle schemas via `drizzle-zod`) for request validation
 - **Error Handling:** Centralized Zod error formatter using `zod-validation-error`
 

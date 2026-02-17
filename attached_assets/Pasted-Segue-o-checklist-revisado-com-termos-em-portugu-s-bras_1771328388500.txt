@@ -1,0 +1,50 @@
+Segue o checklist revisado com termos em português brasileiro.
+
+1) Servidor — base de autenticação
+
+Criar tabela de sessão/token de atualização (hash do token, id_usuario, expiração, revogado_em, ip, agente_usuario).
+Implementar POST /autenticacao/entrar (valida credencial e emite token de acesso + token de atualização).
+Implementar POST /autenticacao/atualizar (rotaciona token de atualização e invalida o anterior).
+Implementar POST /autenticacao/sair (revoga a sessão atual).
+Implementar GET /autenticacao/eu (dados do usuário autenticado).
+2) Segurança obrigatória
+
+Token de acesso curto (ex.: 10 min) e token de atualização longo (ex.: 14 dias).
+Cookie do token de atualização: HttpOnly, Secure, SameSite=Lax ou SameSite=Strict.
+Salvar apenas hash do token de atualização no banco.
+Limitar tentativas em entrar e atualizar.
+Auditoria mínima: ultimo_acesso_em, tentativas inválidas.
+3) Camada de proteção
+
+Intermediador de autenticação por token nas rotas privadas.
+Tratamento padronizado para 401 e 403.
+Verificação de sessão revogada na atualização de token.
+4) Aplicativo — fluxo de sessão
+
+Entrar chama /autenticacao/entrar.
+Guardar token de acesso em memória (estado da aplicação), não em armazenamento local.
+Interceptador de requisições:
+ao receber 401, tentar /autenticacao/atualizar uma vez;
+se falhar, limpar sessão e redirecionar para entrar.
+Inicialização do aplicativo: chamar /autenticacao/eu para restaurar sessão.
+5) Experiência da pessoa usuária
+
+Estado de carregamento no botão “Acessar conta”.
+Mensagens claras para:
+credencial inválida,
+sessão expirada,
+sem conexão.
+Saída explícita no Perfil com confirmação.
+6) Testes mínimos de aceitação
+
+Entrar com credencial válida/inválida.
+Atualização de token com rotação correta.
+Sair invalida sessão.
+Rota privada sem token retorna 401.
+Sessão expirada exige nova autenticação.
+7) Definição de pronto (produção interna)
+
+Nenhuma tela privada acessível sem autenticação.
+Sessão mantida após recarregar a aplicação.
+Sair encerra sessão para chamadas subsequentes.
+Registros e métricas básicas de autenticação ativos.

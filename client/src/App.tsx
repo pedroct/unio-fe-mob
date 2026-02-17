@@ -1,8 +1,9 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import NotFound from "@/pages/not-found";
 import SplashScreen from "@/pages/splash";
 import AuthScreen from "@/pages/auth";
@@ -24,41 +25,50 @@ import PantryScreen from "@/pages/pantry";
 import ShoppingListScreen from "@/pages/pantry/shopping-list";
 import HydrationScreen from "@/pages/hydration";
 import ProfileScreen from "@/pages/profile";
-import { useState } from "react";
-import { Redirect } from "wouter";
+import { useState, type ReactNode } from "react";
+
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) return null;
+  if (!user) return <Redirect to="/auth" />;
+
+  return <Component />;
+}
 
 function Router() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) return null;
+
   return (
     <Switch>
-      <Route path="/">{() => <Redirect to="/home" />}</Route>
-      <Route path="/auth" component={AuthScreen} />
+      <Route path="/">{() => <Redirect to={user ? "/home" : "/auth"} />}</Route>
+      <Route path="/auth">{() => user ? <Redirect to="/home" /> : <AuthScreen />}</Route>
       <Route path="/onboarding" component={OnboardingScreen} />
       <Route path="/welcome" component={WelcomeScreen} />
-      <Route path="/home" component={HomeScreen} />
-      <Route path="/profile" component={ProfileScreen} />
-      
-      {/* Nutrition Module */}
-      <Route path="/nutrition" component={NutritionScreen} />
-      <Route path="/nutrition/add" component={NutritionAddScreen} />
-      <Route path="/nutrition/scale" component={NutritionScaleScreen} />
-      <Route path="/pantry" component={PantryScreen} />
-      <Route path="/pantry/shopping-list" component={ShoppingListScreen} />
-      <Route path="/hydration" component={HydrationScreen} />
 
-      {/* Training Module */}
-      <Route path="/training" component={TrainingScreen} />
-      <Route path="/training/details" component={TrainingDetailsScreen} />
-      <Route path="/training/player" component={TrainingPlayerScreen} />
-      
-      {/* Biometrics Module */}
-      <Route path="/biometrics" component={BiometricsScreen} />
-      <Route path="/biometrics/devices" component={BiometricsDevicesScreen} />
-      <Route path="/biometrics/link" component={BiometricsLinkScreen} />
-      <Route path="/biometrics/scan" component={BiometricsScanScreen} />
+      <Route path="/home">{() => <ProtectedRoute component={HomeScreen} />}</Route>
+      <Route path="/profile">{() => <ProtectedRoute component={ProfileScreen} />}</Route>
 
-      {/* Supplements Module */}
-      <Route path="/supplements" component={SupplementsScreen} />
-      
+      <Route path="/nutrition">{() => <ProtectedRoute component={NutritionScreen} />}</Route>
+      <Route path="/nutrition/add">{() => <ProtectedRoute component={NutritionAddScreen} />}</Route>
+      <Route path="/nutrition/scale">{() => <ProtectedRoute component={NutritionScaleScreen} />}</Route>
+      <Route path="/pantry">{() => <ProtectedRoute component={PantryScreen} />}</Route>
+      <Route path="/pantry/shopping-list">{() => <ProtectedRoute component={ShoppingListScreen} />}</Route>
+      <Route path="/hydration">{() => <ProtectedRoute component={HydrationScreen} />}</Route>
+
+      <Route path="/training">{() => <ProtectedRoute component={TrainingScreen} />}</Route>
+      <Route path="/training/details">{() => <ProtectedRoute component={TrainingDetailsScreen} />}</Route>
+      <Route path="/training/player">{() => <ProtectedRoute component={TrainingPlayerScreen} />}</Route>
+
+      <Route path="/biometrics">{() => <ProtectedRoute component={BiometricsScreen} />}</Route>
+      <Route path="/biometrics/devices">{() => <ProtectedRoute component={BiometricsDevicesScreen} />}</Route>
+      <Route path="/biometrics/link">{() => <ProtectedRoute component={BiometricsLinkScreen} />}</Route>
+      <Route path="/biometrics/scan">{() => <ProtectedRoute component={BiometricsScanScreen} />}</Route>
+
+      <Route path="/supplements">{() => <ProtectedRoute component={SupplementsScreen} />}</Route>
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -73,10 +83,12 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

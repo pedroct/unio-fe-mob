@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
+import bcrypt from "bcrypt";
 import {
   insertUserSchema,
   insertDeviceSchema,
@@ -16,6 +17,12 @@ import {
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 
+declare module "express-session" {
+  interface SessionData {
+    userId: string;
+  }
+}
+
 function handleZodError(err: unknown) {
   if (err instanceof ZodError) {
     return { status: 400, body: { error: fromZodError(err).message } };
@@ -23,61 +30,144 @@ function handleZodError(err: unknown) {
   return { status: 500, body: { error: String(err) } };
 }
 
+function sanitizeUser(user: any) {
+  const { passwordHash, ...rest } = user;
+  return rest;
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "Não autenticado." });
+  }
+  next();
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  // ── Users ──
-  app.get("/api/users/:id", async (req, res) => {
-    const user = await storage.getUser(req.params.id);
-    if (!user) return res.status(404).json({ error: "User not found" });
-    res.json(user);
-  });
-
-  app.post("/api/users", async (req, res) => {
+  // ── Auth ──
+  app.post("/api/auth/register", async (req, res) => {
     try {
-      const data = insertUserSchema.parse(req.body);
-      const user = await storage.createUser(data);
-      res.status(201).json(user);
+      const { email, password, displayName } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ error: "A senha deve ter pelo menos 6 caracteres." });
+      }
+
+      const existing = await storage.getUserByEmail(email);
+      if (existing) {
+        return res.status(409).json({ error: "Este e-mail já está em uso." });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const username = email.split("@")[0] + "_" + Date.now().toString(36);
+
+      const user = await storage.createUser({
+        username,
+        email,
+        passwordHash,
+        displayName: displayName || email.split("@")[0],
+      });
+
+      req.session.userId = user.id;
+      res.status(201).json(sanitizeUser(user));
     } catch (err) {
       const { status, body } = handleZodError(err);
       res.status(status).json(body);
     }
   });
 
-  app.patch("/api/users/:id", async (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ error: "E-mail ou senha incorretos." });
+      }
+
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) {
+        return res.status(401).json({ error: "E-mail ou senha incorretos." });
+      }
+
+      req.session.userId = user.id;
+      res.json(sanitizeUser(user));
+    } catch (err) {
+      res.status(500).json({ error: "Erro interno ao fazer login." });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) return res.status(500).json({ error: "Erro ao encerrar sessão." });
+      res.clearCookie("connect.sid");
+      res.json({ ok: true });
+    });
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "Não autenticado." });
+    }
+    const user = await storage.getUser(req.session.userId);
+    if (!user) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ error: "Usuário não encontrado." });
+    }
+    res.json(sanitizeUser(user));
+  });
+
+  // ── Users ──
+  app.get("/api/users/:id", requireAuth, async (req, res) => {
+    if (req.params.id !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
+    const user = await storage.getUser(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json(sanitizeUser(user));
+  });
+
+  app.patch("/api/users/:id", requireAuth, async (req, res) => {
+    try {
+      if (req.params.id !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
       const data = insertUserSchema.partial().parse(req.body);
       const user = await storage.updateUser(req.params.id, data);
       if (!user) return res.status(404).json({ error: "User not found" });
-      res.json(user);
+      res.json(sanitizeUser(user));
     } catch (err) {
       const { status, body } = handleZodError(err);
       res.status(status).json(body);
     }
   });
 
-  app.delete("/api/users/:id", async (req, res) => {
+  app.delete("/api/users/:id", requireAuth, async (req, res) => {
+    if (req.params.id !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     await storage.softDeleteUser(req.params.id);
     res.status(204).end();
   });
 
   // ── Devices ──
-  app.get("/api/users/:userId/devices", async (req, res) => {
+  app.get("/api/users/:userId/devices", requireAuth, async (req, res) => {
+    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     const devs = await storage.getDevicesByUser(req.params.userId);
     res.json(devs);
   });
 
-  app.get("/api/devices/:id", async (req, res) => {
+  app.get("/api/devices/:id", requireAuth, async (req, res) => {
     const d = await storage.getDevice(req.params.id);
     if (!d) return res.status(404).json({ error: "Device not found" });
     res.json(d);
   });
 
-  app.post("/api/devices", async (req, res) => {
+  app.post("/api/devices", requireAuth, async (req, res) => {
     try {
-      const data = insertDeviceSchema.parse(req.body);
+      const data = insertDeviceSchema.parse({ ...req.body, userId: req.session.userId });
       const d = await storage.createDevice(data);
       res.status(201).json(d);
     } catch (err) {
@@ -86,26 +176,27 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/devices/:id", async (req, res) => {
+  app.delete("/api/devices/:id", requireAuth, async (req, res) => {
     await storage.softDeleteDevice(req.params.id);
     res.status(204).end();
   });
 
   // ── Body Records ──
-  app.get("/api/users/:userId/body-records", async (req, res) => {
+  app.get("/api/users/:userId/body-records", requireAuth, async (req, res) => {
+    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     const records = await storage.getBodyRecordsByUser(req.params.userId);
     res.json(records);
   });
 
-  app.get("/api/body-records/:id", async (req, res) => {
+  app.get("/api/body-records/:id", requireAuth, async (req, res) => {
     const record = await storage.getBodyRecord(req.params.id);
     if (!record) return res.status(404).json({ error: "Record not found" });
     res.json(record);
   });
 
-  app.post("/api/body-records", async (req, res) => {
+  app.post("/api/body-records", requireAuth, async (req, res) => {
     try {
-      const data = insertBodyRecordSchema.parse(req.body);
+      const data = insertBodyRecordSchema.parse({ ...req.body, userId: req.session.userId });
       const record = await storage.createBodyRecord(data);
       res.status(201).json(record);
     } catch (err) {
@@ -114,7 +205,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/body-records/:id", async (req, res) => {
+  app.patch("/api/body-records/:id", requireAuth, async (req, res) => {
     try {
       const data = insertBodyRecordSchema.partial().parse(req.body);
       const record = await storage.updateBodyRecord(req.params.id, data);
@@ -126,20 +217,21 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/body-records/:id", async (req, res) => {
+  app.delete("/api/body-records/:id", requireAuth, async (req, res) => {
     await storage.softDeleteBodyRecord(req.params.id);
     res.status(204).end();
   });
 
   // ── Goals ──
-  app.get("/api/users/:userId/goals", async (req, res) => {
+  app.get("/api/users/:userId/goals", requireAuth, async (req, res) => {
+    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     const g = await storage.getGoalsByUser(req.params.userId);
     res.json(g);
   });
 
-  app.post("/api/goals", async (req, res) => {
+  app.post("/api/goals", requireAuth, async (req, res) => {
     try {
-      const data = insertGoalSchema.parse(req.body);
+      const data = insertGoalSchema.parse({ ...req.body, userId: req.session.userId });
       const g = await storage.createGoal(data);
       res.status(201).json(g);
     } catch (err) {
@@ -148,7 +240,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/goals/:id", async (req, res) => {
+  app.patch("/api/goals/:id", requireAuth, async (req, res) => {
     try {
       const data = insertGoalSchema.partial().parse(req.body);
       const g = await storage.updateGoal(req.params.id, data);
@@ -160,24 +252,24 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/goals/:id", async (req, res) => {
+  app.delete("/api/goals/:id", requireAuth, async (req, res) => {
     await storage.softDeleteGoal(req.params.id);
     res.status(204).end();
   });
 
   // ── Foods ──
-  app.get("/api/foods", async (_req, res) => {
+  app.get("/api/foods", requireAuth, async (_req, res) => {
     const allFoods = await storage.getAllFoods();
     res.json(allFoods);
   });
 
-  app.get("/api/foods/:id", async (req, res) => {
+  app.get("/api/foods/:id", requireAuth, async (req, res) => {
     const food = await storage.getFood(req.params.id);
     if (!food) return res.status(404).json({ error: "Food not found" });
     res.json(food);
   });
 
-  app.post("/api/foods", async (req, res) => {
+  app.post("/api/foods", requireAuth, async (req, res) => {
     try {
       const data = insertFoodSchema.parse(req.body);
       const food = await storage.createFood(data);
@@ -188,7 +280,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/foods/:id", async (req, res) => {
+  app.patch("/api/foods/:id", requireAuth, async (req, res) => {
     try {
       const data = insertFoodSchema.partial().parse(req.body);
       const food = await storage.updateFood(req.params.id, data);
@@ -200,20 +292,21 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/foods/:id", async (req, res) => {
+  app.delete("/api/foods/:id", requireAuth, async (req, res) => {
     await storage.softDeleteFood(req.params.id);
     res.status(204).end();
   });
 
   // ── Food Stock ──
-  app.get("/api/users/:userId/food-stock", async (req, res) => {
+  app.get("/api/users/:userId/food-stock", requireAuth, async (req, res) => {
+    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     const stock = await storage.getFoodStockByUser(req.params.userId);
     res.json(stock);
   });
 
-  app.post("/api/food-stock", async (req, res) => {
+  app.post("/api/food-stock", requireAuth, async (req, res) => {
     try {
-      const data = insertFoodStockSchema.parse(req.body);
+      const data = insertFoodStockSchema.parse({ ...req.body, userId: req.session.userId });
       const stock = await storage.createFoodStock(data);
       res.status(201).json(stock);
     } catch (err) {
@@ -222,7 +315,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/food-stock/:id", async (req, res) => {
+  app.patch("/api/food-stock/:id", requireAuth, async (req, res) => {
     try {
       const data = insertFoodStockSchema.partial().parse(req.body);
       const stock = await storage.updateFoodStock(req.params.id, data);
@@ -234,12 +327,13 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/food-stock/:id", async (req, res) => {
+  app.delete("/api/food-stock/:id", requireAuth, async (req, res) => {
     await storage.softDeleteFoodStock(req.params.id);
     res.status(204).end();
   });
 
-  app.get("/api/users/:userId/food-stock/status", async (req, res) => {
+  app.get("/api/users/:userId/food-stock/status", requireAuth, async (req, res) => {
+    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     try {
       const items = await storage.getFoodStockWithStatus(req.params.userId);
       res.json(items);
@@ -250,19 +344,21 @@ export async function registerRoutes(
   });
 
   // ── Purchase Records ──
-  app.get("/api/users/:userId/purchases/pending", async (req, res) => {
+  app.get("/api/users/:userId/purchases/pending", requireAuth, async (req, res) => {
+    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     const purchases = await storage.getPendingPurchasesByUser(req.params.userId);
     res.json(purchases);
   });
 
-  app.get("/api/users/:userId/purchases/history", async (req, res) => {
+  app.get("/api/users/:userId/purchases/history", requireAuth, async (req, res) => {
+    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     const purchases = await storage.getPurchaseHistoryByUser(req.params.userId);
     res.json(purchases);
   });
 
-  app.post("/api/purchases", async (req, res) => {
+  app.post("/api/purchases", requireAuth, async (req, res) => {
     try {
-      const data = insertPurchaseRecordSchema.parse(req.body);
+      const data = insertPurchaseRecordSchema.parse({ ...req.body, userId: req.session.userId });
       const purchase = await storage.createPurchaseRecord(data);
       res.status(201).json(purchase);
     } catch (err) {
@@ -271,7 +367,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/purchases/:id/confirm", async (req, res) => {
+  app.post("/api/purchases/:id/confirm", requireAuth, async (req, res) => {
     try {
       const { actualQuantity } = req.body;
       if (typeof actualQuantity !== "number" || actualQuantity < 0) {
@@ -284,7 +380,8 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/users/:userId/purchases/confirm-all", async (req, res) => {
+  app.post("/api/users/:userId/purchases/confirm-all", requireAuth, async (req, res) => {
+    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     try {
       const { items } = req.body;
       if (!Array.isArray(items)) {
@@ -298,7 +395,8 @@ export async function registerRoutes(
   });
 
   // ── Hydration Records ──
-  app.get("/api/users/:userId/hydration/today", async (req, res) => {
+  app.get("/api/users/:userId/hydration/today", requireAuth, async (req, res) => {
+    if (req.params.userId !== req.session.userId) return res.status(403).json({ error: "Acesso negado." });
     try {
       const result = await storage.getHydrationTotalToday(req.params.userId);
       res.json(result);
@@ -308,9 +406,9 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hydration", async (req, res) => {
+  app.post("/api/hydration", requireAuth, async (req, res) => {
     try {
-      const data = insertHydrationRecordSchema.parse(req.body);
+      const data = insertHydrationRecordSchema.parse({ ...req.body, userId: req.session.userId });
       const record = await storage.createHydrationRecord(data);
       res.status(201).json(record);
     } catch (err) {
@@ -319,13 +417,13 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/hydration/:id", async (req, res) => {
+  app.delete("/api/hydration/:id", requireAuth, async (req, res) => {
     await storage.softDeleteHydrationRecord(req.params.id);
     res.status(204).end();
   });
 
   // ── Sync Pull (GET /api/sync/pull) ──
-  app.get("/api/sync/pull", async (req, res) => {
+  app.get("/api/sync/pull", requireAuth, async (req, res) => {
     try {
       const query = syncPullQuerySchema.parse(req.query);
       const result = await storage.syncPull({
@@ -341,7 +439,7 @@ export async function registerRoutes(
   });
 
   // ── Sync Push (POST /api/sync/push) ──
-  app.post("/api/sync/push", async (req, res) => {
+  app.post("/api/sync/push", requireAuth, async (req, res) => {
     try {
       const body = syncPushRequestSchema.parse(req.body);
       const result = await storage.syncPush({

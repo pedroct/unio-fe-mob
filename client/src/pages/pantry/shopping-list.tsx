@@ -4,9 +4,8 @@ import { useLocation } from "wouter";
 import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
 import type { FoodStock } from "@shared/schema";
-
-const DEFAULT_USER_ID = "5403356d-c894-43f3-846a-513f8e1ad4bb";
 
 type StockItem = FoodStock & { status: string };
 
@@ -102,18 +101,21 @@ function QtyInput({
 export default function ShoppingListScreen() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const [buyQuantities, setBuyQuantities] = useState<Record<string, number>>({});
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
   const [confirmQty, setConfirmQty] = useState(0);
 
   const { data: stockItems = [], isLoading } = useQuery<StockItem[]>({
-    queryKey: ["food-stock", "status", DEFAULT_USER_ID],
+    queryKey: ["food-stock", "status", userId],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${DEFAULT_USER_ID}/food-stock/status`);
+      const res = await fetch(`/api/users/${userId}/food-stock/status`);
       if (!res.ok) throw new Error("Failed to fetch stock");
       return res.json();
     },
+    enabled: !!userId,
   });
 
   const purchaseMutation = useMutation({
@@ -124,7 +126,7 @@ export default function ShoppingListScreen() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: DEFAULT_USER_ID,
+          userId: userId,
           foodStockId: stockItem.id,
           plannedQuantity: buyQtyToStockUnits(plannedQty, stockItem.unit),
           actualQuantity: buyQtyToStockUnits(actualQuantity, stockItem.unit),

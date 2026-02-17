@@ -4,9 +4,8 @@ import { useLocation } from "wouter";
 import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
 import type { FoodStock } from "@shared/schema";
-
-const DEFAULT_USER_ID = "5403356d-c894-43f3-846a-513f8e1ad4bb";
 
 type StockItem = FoodStock & { status: string };
 
@@ -20,6 +19,8 @@ function formatQuantity(qty: number, unit: string): string {
 
 export default function PantryScreen() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const [filter, setFilter] = useState("Todos");
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
@@ -27,12 +28,13 @@ export default function PantryScreen() {
   const scrollLeftStart = useRef(0);
 
   const { data: stockItems = [], isLoading } = useQuery<StockItem[]>({
-    queryKey: ["food-stock", "status", DEFAULT_USER_ID],
+    queryKey: ["food-stock", "status", userId],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${DEFAULT_USER_ID}/food-stock/status`);
+      const res = await fetch(`/api/users/${userId}/food-stock/status`);
       if (!res.ok) throw new Error("Failed to fetch stock");
       return res.json();
     },
+    enabled: !!userId,
   });
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
