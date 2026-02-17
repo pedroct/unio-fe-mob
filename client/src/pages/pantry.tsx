@@ -77,24 +77,20 @@ export default function PantryScreen() {
           </section>
 
           {/* Filters */}
-          <div className="relative">
-            <div className="sem-scrollbar flex gap-2 overflow-x-auto px-1 py-1">
-              {["Todos", "Proteínas", "Grãos", "Suplementos", "Gorduras"].map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setFilter(cat)}
-                  className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors shrink-0 ${
-                    filter === cat 
-                      ? "bg-[#2F5641] text-white" 
-                      : "bg-white border border-[#E8EBE5] text-[#8B9286]"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-[#FAFBF8] to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-[#FAFBF8] to-transparent" />
+          <div className="sem-scrollbar flex gap-2 overflow-x-auto -mx-6 px-6 py-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+            {["Todos", "Proteínas", "Grãos", "Suplementos", "Gorduras"].map((cat, i, arr) => (
+              <button
+                key={cat}
+                onClick={() => setFilter(cat)}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors shrink-0 ${
+                  filter === cat 
+                    ? "bg-[#2F5641] text-white" 
+                    : "bg-white border border-[#E8EBE5] text-[#8B9286]"
+                } ${i === arr.length - 1 ? 'mr-2' : ''}`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
 
           {/* Inventory Grid */}
