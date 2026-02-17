@@ -163,19 +163,6 @@ export default function SplashScreen({ onComplete }: { onComplete?: () => void }
         </div>
       </div>
 
-      {/* Footer */}
-      <div 
-        className="absolute bottom-12 z-10 text-center transition-all duration-700 delay-700"
-        style={{
-          opacity: phase === "ready" ? 0.4 : 0,
-          transform: phase === "ready" ? "translateY(0)" : "translateY(10px)"
-        }}
-      >
-        <p className="font-body text-[9px] tracking-[1.5px] uppercase text-[#F5F3EE]">
-          Dados que cuidam de você
-        </p>
-      </div>
-
       {/* Exit Overlay */}
       <div 
         className="absolute inset-0 z-20 bg-[#FAFBF8] pointer-events-none transition-opacity duration-600 ease-out"
