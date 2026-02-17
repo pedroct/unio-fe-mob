@@ -78,6 +78,8 @@ export default function ProfileScreen() {
       if (!res.ok) throw new Error("Erro ao carregar perfil.");
       return res.json();
     },
+    enabled: !!user,
+    retry: 2,
   });
 
   useEffect(() => {
@@ -208,7 +210,7 @@ export default function ProfileScreen() {
 
   const photo = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username || "user"}`;
 
-  if (profileQuery.isLoading) {
+  if (profileQuery.isLoading || (!profileQuery.data && !profileQuery.isError)) {
     return (
       <Layout>
         <div className="min-h-screen flex items-center justify-center" data-testid="loading-profile">
