@@ -91,7 +91,7 @@ export default function ProfileScreen() {
           >
             <ChevronLeft size={24} />
           </button>
-          <h1 className="font-display text-lg font-semibold text-[#2F5641]">Meu perfil</h1>
+          <h1 className="font-display text-lg font-semibold text-[#2F5641]">Meu Perfil</h1>
           <button className="w-10 h-10 flex items-center justify-center text-[#2F5641]">
             <Settings size={20} />
           </button>
@@ -184,10 +184,23 @@ export default function ProfileScreen() {
                <div>
                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nascimento</label>
                  <input 
-                   type="date" 
-                   value={user.birthDate}
-                   onChange={(e) => setUser({...user, birthDate: e.target.value})}
+                   type="text" 
+                   value={user.birthDate.split('-').reverse().join('/')}
+                   onChange={(e) => {
+                     const raw = e.target.value.replace(/\D/g, '').slice(0, 8);
+                     let formatted = raw;
+                     if (raw.length > 2) formatted = raw.slice(0, 2) + '/' + raw.slice(2);
+                     if (raw.length > 4) formatted = raw.slice(0, 2) + '/' + raw.slice(2, 4) + '/' + raw.slice(4);
+                     const parts = formatted.split('/');
+                     if (parts.length === 3 && parts[2].length === 4) {
+                       setUser({...user, birthDate: `${parts[2]}-${parts[1]}-${parts[0]}`});
+                     } else {
+                       setUser({...user, birthDate: formatted});
+                     }
+                   }}
                    placeholder="DD/MM/AAAA"
+                   inputMode="numeric"
+                   maxLength={10}
                    className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${errors.birthDate ? 'border-[#BE4E35]' : 'border-[#E8EBE5]'}`}
                  />
                  {errors.birthDate && <p className="text-[#BE4E35] text-[10px] mt-1">{errors.birthDate}</p>}
@@ -256,7 +269,7 @@ export default function ProfileScreen() {
                      </div>
                      <span className="text-sm font-medium text-[#2F5641]">Meta de calorias</span>
                    </div>
-                   <span className="font-bold text-[#2F5641]">{goals.calories} kcal</span>
+                   <span className="font-bold text-[#2F5641]">{goals.calories.toLocaleString('pt-BR')} kcal</span>
                  </div>
                  <div className="bg-white p-4 rounded-xl border border-[#E8EBE5] flex items-center justify-between">
                    <div className="flex items-center gap-3">
