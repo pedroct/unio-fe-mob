@@ -18,34 +18,33 @@ export default function PantryScreen() {
   const [filter, setFilter] = useState("Todos");
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
-  const hasMoved = useRef(false);
   const startX = useRef(0);
-  const scrollLeft = useRef(0);
+  const scrollLeftStart = useRef(0);
 
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
     const el = scrollRef.current;
     if (!el) return;
-    isDragging.current = true;
-    hasMoved.current = false;
-    startX.current = e.clientX;
-    scrollLeft.current = el.scrollLeft;
-    el.setPointerCapture(e.pointerId);
-  }, []);
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current || !scrollRef.current) return;
-    const dx = e.clientX - startX.current;
-    if (Math.abs(dx) > 5) hasMoved.current = true;
-    scrollRef.current.scrollLeft = scrollLeft.current - dx;
-  }, []);
-
-  const onPointerUp = useCallback((e: React.PointerEvent) => {
     isDragging.current = false;
-    scrollRef.current?.releasePointerCapture(e.pointerId);
+    startX.current = e.pageX;
+    scrollLeftStart.current = el.scrollLeft;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const dx = ev.pageX - startX.current;
+      if (Math.abs(dx) > 5) isDragging.current = true;
+      el.scrollLeft = scrollLeftStart.current - dx;
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
   }, []);
 
   const handleChipClick = useCallback((cat: string) => {
-    if (!hasMoved.current) setFilter(cat);
+    if (!isDragging.current) setFilter(cat);
   }, []);
 
   const getStatusColor = (status: string) => {
@@ -110,10 +109,7 @@ export default function PantryScreen() {
           {/* Filters */}
           <div
             ref={scrollRef}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
+            onMouseDown={onMouseDown}
             className="sem-scrollbar flex gap-2 overflow-x-auto -mx-6 px-6 py-1 cursor-grab active:cursor-grabbing select-none touch-pan-x"
           >
             {["Todos", "Proteínas", "Grãos", "Suplementos", "Gorduras"].map((cat, i, arr) => (
