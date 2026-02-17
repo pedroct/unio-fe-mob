@@ -19,8 +19,18 @@ interface StagingProfile {
   foto_url: string | null;
   mac_balanca: string | null;
   idade: number | null;
+  fator_atividade: string | null;
+  meta_calorias: number | null;
   criado_em: string;
 }
+
+const FATOR_ATIVIDADE_OPTIONS = [
+  { value: "sedentario", label: "Sedentário" },
+  { value: "levemente_ativo", label: "Levemente ativo" },
+  { value: "moderadamente_ativo", label: "Moderadamente ativo" },
+  { value: "muito_ativo", label: "Muito ativo" },
+  { value: "extremamente_ativo", label: "Extremamente ativo" },
+];
 
 interface FieldError {
   field: string;
@@ -69,7 +79,10 @@ export default function ProfileScreen() {
     data_nascimento: "",
     sexo: "",
     objetivo: "",
+    fator_atividade: "",
+    meta_calorias: "",
   });
+  const [metaMode, setMetaMode] = useState<"auto" | "manual">("auto");
 
   const profileQuery = useQuery<StagingProfile>({
     queryKey: ["profile"],
@@ -102,8 +115,11 @@ export default function ProfileScreen() {
         data_nascimento: p.data_nascimento || "",
         sexo: p.sexo || "",
         objetivo: p.objetivo || "",
+        fator_atividade: p.fator_atividade || "",
+        meta_calorias: p.meta_calorias && p.meta_calorias > 0 ? String(p.meta_calorias) : "",
       }));
       setBirthDateDisplay(isoToDisplay(p.data_nascimento));
+      setMetaMode(p.meta_calorias && p.meta_calorias > 0 ? "manual" : "auto");
     }
   }, [profileQuery.data]);
 
@@ -135,6 +151,7 @@ export default function ProfileScreen() {
     onSuccess: async (data) => {
       setFieldErrors({});
       queryClient.setQueryData(["profile"], data);
+      queryClient.invalidateQueries({ queryKey: ["nutricao"] });
       await refreshUser();
       setForm((prev) => ({
         ...prev,
@@ -142,8 +159,11 @@ export default function ProfileScreen() {
         data_nascimento: data.data_nascimento || "",
         sexo: data.sexo || "",
         objetivo: data.objetivo || "",
+        fator_atividade: data.fator_atividade || "",
+        meta_calorias: data.meta_calorias && data.meta_calorias > 0 ? String(data.meta_calorias) : "",
       }));
       setBirthDateDisplay(isoToDisplay(data.data_nascimento));
+      setMetaMode(data.meta_calorias && data.meta_calorias > 0 ? "manual" : "auto");
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     },
@@ -183,6 +203,11 @@ export default function ProfileScreen() {
       errs.sexo = "Sexo deve ser M ou F.";
     }
 
+    if (metaMode === "manual" && form.meta_calorias) {
+      const mc = parseFloat(form.meta_calorias);
+      if (isNaN(mc) || mc <= 0) errs.meta_calorias = "Meta calórica deve ser um número positivo.";
+    }
+
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -198,6 +223,10 @@ export default function ProfileScreen() {
       altura_cm: form.altura_cm ? parseFloat(form.altura_cm) : null,
       sexo: form.sexo || null,
       objetivo: form.objetivo || null,
+      fator_atividade: form.fator_atividade || null,
+      meta_calorias: metaMode === "manual" && form.meta_calorias
+        ? parseFloat(form.meta_calorias)
+        : null,
     };
     saveMutation.mutate({ userPayload, profilePayload });
   };
@@ -417,6 +446,77 @@ export default function ProfileScreen() {
                   <option value="ganhar_massa">Ganhar massa</option>
                 </select>
               </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide mb-4">
+              Meta Calórica
+            </h2>
+
+            <div className="flex rounded-xl overflow-hidden border border-[#E8EBE5] mb-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setMetaMode("auto");
+                  setForm((prev) => ({ ...prev, meta_calorias: "" }));
+                }}
+                className={`flex-1 py-3 text-sm font-bold transition-colors ${metaMode === "auto" ? "bg-[#2F5641] text-white" : "bg-white text-[#8B9286]"}`}
+                data-testid="button-meta-auto"
+              >
+                Automático
+              </button>
+              <button
+                type="button"
+                onClick={() => setMetaMode("manual")}
+                className={`flex-1 py-3 text-sm font-bold transition-colors ${metaMode === "manual" ? "bg-[#2F5641] text-white" : "bg-white text-[#8B9286]"}`}
+                data-testid="button-meta-manual"
+              >
+                Manual
+              </button>
+            </div>
+
+            {metaMode === "auto" ? (
+              <div className="bg-[#F5F3EE] rounded-xl px-4 py-3">
+                <p className="text-xs text-[#8B9286]">
+                  A meta calórica é calculada automaticamente com base no seu perfil, peso e nível de atividade.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Meta (kcal/dia)</label>
+                <input
+                  type="number"
+                  value={form.meta_calorias}
+                  onChange={(e) => setForm({ ...form, meta_calorias: e.target.value })}
+                  placeholder="Ex.: 2500"
+                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.meta_calorias ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                  data-testid="input-meta-calorias"
+                />
+                {fieldErrors.meta_calorias && (
+                  <p className="text-[#BE4E35] text-[10px] mt-1" data-testid="error-meta-calorias">
+                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.meta_calorias}
+                  </p>
+                )}
+                <p className="text-[10px] text-[#8B9286] mt-2">
+                  Ao definir manualmente, o déficit automático não será aplicado.
+                </p>
+              </div>
+            )}
+
+            <div className="mt-4">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nível de Atividade</label>
+              <select
+                value={form.fator_atividade}
+                onChange={(e) => setForm({ ...form, fator_atividade: e.target.value })}
+                className="w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] border-[#E8EBE5]"
+                data-testid="select-fator-atividade"
+              >
+                <option value="" disabled>Selecione</option>
+                {FATOR_ATIVIDADE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
           </section>
 
