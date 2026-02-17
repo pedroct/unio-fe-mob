@@ -58,11 +58,18 @@ Preferred communication style: Simple, everyday language.
   - `users` — User profiles (UUID primary keys, soft delete, audit fields for auth, scaleMac for BLE scale, mlMetaDiaria/metaAtualizadaEm for hydration goal)
   - `auth_sessions` — JWT refresh token sessions (hashed tokens, device info, expiry)
   - `body_records` — Weight/body composition measurements
-  - `foods` — Nutritional database (per-serving macro data)
+  - `foods` — Nutritional database (per-serving macro data, optional FK `alimento_tbca_id` to TBCA)
+  - `grupos_alimentares` — TBCA food groups (A=Cereais, B=Verduras, C=Frutas, etc.)
+  - `tipos_alimento` — TBCA food preparation types (CRU, COZIDO, GRELHADO, etc.)
+  - `nutrientes` — Nutrient definitions (ENERGIA, PROTEINA, CARBOIDRATO, GORDURA_TOTAL, FIBRA, etc.)
+  - `alimentos_tbca` — TBCA food items with codigo_tbca, grupo/tipo FKs, porcao_base_g
+  - `alimento_nutrientes` — Nutritional composition per TBCA food (valor_por_100g per nutriente)
+  - `lotes_importacao` — TBCA import batch tracking
+  - `log_importacao_alimentos` — Per-food import audit log
   - `food_stock` — Pantry inventory tracking
   - `hydration_records` — Water/beverage intake tracking (soft delete via deletedAt, beverageType enum AGUA/SUCO/CAFE/CHA/LEITE/ISOTONICO/OUTRO)
   - `sync_log` — Change tracking for offline sync
-- **Seed Data:** `server/seed.ts` provides 15 common Brazilian foods and a default user
+- **Seed Data:** `server/seed.ts` provides 15 legacy foods, 20 TBCA foods (with full nutritional composition across 15 nutrients), 14 food groups, 8 food types, and a default user
 
 ### Sync Engine (Offline-First, Real API)
 - Client-side sync engine in `client/src/lib/sync-engine.ts` using Zustand

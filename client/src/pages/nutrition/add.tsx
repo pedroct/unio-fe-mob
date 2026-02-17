@@ -1,23 +1,31 @@
 import Layout from "@/components/layout";
 import { ChevronLeft, Search, ScanBarcode, Plus, X, Check, Minus } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
-interface FoodItem {
+interface UnifiedFoodItem {
   id: string;
-  name: string;
-  brand: string | null;
-  servingSizeG: number;
-  caloriesKcal: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
+  tipo_id: string;
+  descricao: string;
+  marca: string | null;
+  codigo_barras: string | null;
+  fonte_dados: "LEGADO" | "TBCA";
+  grupo: string | null;
+  resumo_macros_100g: {
+    calorias: number;
+    carboidratos: number;
+    proteinas: number;
+    gorduras: number;
+    fibras: number | null;
+  };
 }
+
+type FonteFilter = "TODOS" | "TBCA" | "LEGADO";
 
 export default function NutritionAddScreen() {
   const [, setLocation] = useLocation();
@@ -25,8 +33,10 @@ export default function NutritionAddScreen() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [fonteFilter, setFonteFilter] = useState<FonteFilter>("TODOS");
   const [showScanner, setShowScanner] = useState(false);
-  const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
+  const [selectedFood, setSelectedFood] = useState<UnifiedFoodItem | null>(null);
   const [quantity, setQuantity] = useState(100);
 
   const params = new URLSearchParams(window.location.search);
@@ -39,28 +49,48 @@ export default function NutritionAddScreen() {
     dinner: "Jantar",
   };
 
-  const { data: foods = [], isLoading: foodsLoading } = useQuery<FoodItem[]>({
-    queryKey: ["/api/foods"],
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const { data: searchResult, isLoading: foodsLoading } = useQuery<{
+    itens: UnifiedFoodItem[];
+    total: number;
+  }>({
+    queryKey: ["/api/nutricao/alimentos-unificados/buscar", debouncedSearch, fonteFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("q", debouncedSearch);
+      params.set("limite", "30");
+      if (fonteFilter !== "TODOS") {
+        params.set("fonte", fonteFilter);
+      }
+      const res = await apiFetch(`/api/nutricao/alimentos-unificados/buscar?${params.toString()}`);
+      if (!res.ok) throw new Error("Erro ao buscar alimentos");
+      return res.json();
+    },
     enabled: !!user,
   });
 
-  const filteredFoods = foods.filter((f) =>
-    f.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const foods = searchResult?.itens || [];
 
   const addMutation = useMutation({
-    mutationFn: async (food: FoodItem) => {
-      const today = new Date().toISOString();
-      const res = await apiFetch("/api/meal-entries", {
+    mutationFn: async (food: UnifiedFoodItem) => {
+      const body: any = {
+        quantidade: quantity,
+        meal_slot: mealSlot,
+        origem: food.fonte_dados === "TBCA" ? "TBCA" : "MANUAL",
+      };
+      if (food.fonte_dados === "TBCA") {
+        body.alimento_tbca_id = food.id;
+      } else {
+        body.alimento_id = food.id;
+      }
+      const res = await apiFetch("/api/nutricao/diario/registrar-avancado", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          foodId: food.id,
-          mealSlot,
-          quantityG: quantity,
-          unit: "g",
-          consumedAt: today,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -70,7 +100,7 @@ export default function NutritionAddScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/users/${user?.id}/meals/summary`] });
-      toast({ title: "Alimento adicionado", description: `${selectedFood?.name} adicionado ao ${SLOT_NAMES[mealSlot]}` });
+      toast({ title: "Alimento adicionado", description: `${selectedFood?.descricao} adicionado ao ${SLOT_NAMES[mealSlot]}` });
       setSelectedFood(null);
       setQuantity(100);
     },
@@ -79,15 +109,21 @@ export default function NutritionAddScreen() {
     },
   });
 
-  const calcStats = (food: FoodItem, qty: number) => {
-    const ratio = qty / (food.servingSizeG || 100);
+  const calcStats = (food: UnifiedFoodItem, qty: number) => {
+    const ratio = qty / 100;
     return {
-      kcal: Math.round(food.caloriesKcal * ratio),
-      protein: Math.round(food.proteinG * ratio * 10) / 10,
-      carbs: Math.round(food.carbsG * ratio * 10) / 10,
-      fat: Math.round(food.fatG * ratio * 10) / 10,
+      kcal: Math.round(food.resumo_macros_100g.calorias * ratio),
+      protein: Math.round(food.resumo_macros_100g.proteinas * ratio * 10) / 10,
+      carbs: Math.round(food.resumo_macros_100g.carboidratos * ratio * 10) / 10,
+      fat: Math.round(food.resumo_macros_100g.gorduras * ratio * 10) / 10,
     };
   };
+
+  const FONTE_TABS: { value: FonteFilter; label: string }[] = [
+    { value: "TODOS", label: "Todos" },
+    { value: "TBCA", label: "TBCA" },
+    { value: "LEGADO", label: "Meus Alimentos" },
+  ];
 
   return (
     <Layout>
@@ -130,30 +166,54 @@ export default function NutritionAddScreen() {
             </p>
           </div>
 
+          <div className="flex gap-2 mb-4" data-testid="filter-fonte-tabs">
+            {FONTE_TABS.map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setFonteFilter(tab.value)}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                  fonteFilter === tab.value
+                    ? "bg-[#2F5641] text-white"
+                    : "bg-white border border-[#E8EBE5] text-[#8B9286]"
+                }`}
+                data-testid={`button-filter-${tab.value.toLowerCase()}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           {foodsLoading ? (
             <div className="py-12 text-center">
               <p className="text-sm text-[#8B9286]">Carregando alimentos...</p>
             </div>
-          ) : filteredFoods.length === 0 ? (
+          ) : foods.length === 0 ? (
             <div className="py-12 text-center">
               <p className="text-sm text-[#8B9286]">Nenhum alimento encontrado</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredFoods.map((food) => (
+              {foods.map((food) => (
                 <button
                   key={food.id}
-                  onClick={() => { setSelectedFood(food); setQuantity(Math.round(food.servingSizeG)); }}
+                  onClick={() => { setSelectedFood(food); setQuantity(100); }}
                   className="w-full bg-white p-4 rounded-xl border border-[#E8EBE5] shadow-sm flex items-center justify-between hover:border-[#C7AE6A] transition-colors group"
                   data-testid={`card-food-${food.id}`}
                 >
                   <div className="text-left">
-                    <h3 className="font-semibold text-[#2F5641]">{food.name}</h3>
-                    <p className="text-xs text-[#8B9286] mt-0.5">{food.servingSizeG}g • {Math.round(food.caloriesKcal)} kcal</p>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-[#2F5641]">{food.descricao}</h3>
+                      {food.fonte_dados === "TBCA" ? (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-[#648D4A]/15 text-[#648D4A] rounded font-semibold" data-testid={`badge-fonte-${food.id}`}>TBCA</span>
+                      ) : (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-[#8B9286]/10 text-[#8B9286] rounded font-medium" data-testid={`badge-fonte-${food.id}`}>Legado</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-[#8B9286] mt-0.5">100g • {Math.round(food.resumo_macros_100g.calorias)} kcal</p>
                     <div className="flex gap-2 mt-2">
-                      <span className="text-[10px] px-1.5 py-0.5 bg-[#648D4A]/10 text-[#648D4A] rounded">P: {food.proteinG}g</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-[#D97952]/10 text-[#D97952] rounded">C: {food.carbsG}g</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-[#C7AE6A]/10 text-[#C7AE6A] rounded">G: {food.fatG}g</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-[#648D4A]/10 text-[#648D4A] rounded">P: {food.resumo_macros_100g.proteinas}g</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-[#D97952]/10 text-[#D97952] rounded">C: {food.resumo_macros_100g.carboidratos}g</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-[#C7AE6A]/10 text-[#C7AE6A] rounded">G: {food.resumo_macros_100g.gorduras}g</span>
                     </div>
                   </div>
                   <div className="w-8 h-8 rounded-full bg-[#FAFBF8] flex items-center justify-center text-[#C7AE6A] group-hover:bg-[#C7AE6A] group-hover:text-white transition-colors">
@@ -183,7 +243,14 @@ export default function NutritionAddScreen() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-display text-lg font-semibold text-[#2F5641]">{selectedFood.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-display text-lg font-semibold text-[#2F5641]">{selectedFood.descricao}</h3>
+                    {selectedFood.fonte_dados === "TBCA" ? (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-[#648D4A]/15 text-[#648D4A] rounded font-semibold">TBCA</span>
+                    ) : (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-[#8B9286]/10 text-[#8B9286] rounded font-medium">Legado</span>
+                    )}
+                  </div>
                   <button onClick={() => setSelectedFood(null)} className="text-[#8B9286]">
                     <X size={20} />
                   </button>

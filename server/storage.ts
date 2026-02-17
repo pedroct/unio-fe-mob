@@ -1,4 +1,4 @@
-import { eq, and, gt, gte, lt, isNull, asc, desc, or, sql } from "drizzle-orm";
+import { eq, and, gt, gte, lt, isNull, asc, desc, or, sql, ilike } from "drizzle-orm";
 import { db } from "./db";
 import {
   users,
@@ -29,6 +29,9 @@ import {
   type InsertPurchaseRecord,
   type HydrationRecord,
   type InsertHydrationRecord,
+  gruposAlimentares, tiposAlimento, nutrientes, alimentosTbca, alimentoNutrientes, lotesImportacao, logImportacaoAlimentos,
+  type GrupoAlimentar, type TipoAlimento, type Nutriente, type AlimentoTbca, type AlimentoNutriente,
+  type InsertAlimentoTbca, type InsertAlimentoNutriente,
 } from "@shared/schema";
 
 const SYNC_TABLES = {
@@ -124,6 +127,41 @@ export interface IStorage {
     restante_ml: number;
     percentual: number;
     atingiu_meta: boolean;
+  }>;
+
+  // TBCA
+  getAllGrupos(): Promise<GrupoAlimentar[]>;
+  getAllTipos(): Promise<TipoAlimento[]>;
+  getAllNutrientes(): Promise<Nutriente[]>;
+  getAlimentoTbca(id: string): Promise<AlimentoTbca | undefined>;
+  getAlimentoTbcaByCodigo(codigo: string): Promise<AlimentoTbca | undefined>;
+  searchAlimentosTbca(query: string, grupoId?: string, tipoId?: string, limite?: number, offset?: number): Promise<{ itens: AlimentoTbca[]; total: number }>;
+  getAlimentoNutrientes(alimentoTbcaId: string): Promise<(AlimentoNutriente & { nutriente: Nutriente })[]>;
+  calcularNutricional(alimentoTbcaId: string, quantidadeG: number): Promise<Record<string, { nome: string; valor: number; unidade: string }>>;
+
+  // Bridge TBCA → foods
+  prepararParaConsumo(alimentoTbcaId: string, descricaoCustomizada?: string): Promise<Food>;
+  getFoodByAlimentoTbcaId(alimentoTbcaId: string): Promise<Food | undefined>;
+
+  // Unified search
+  searchAlimentosUnificados(query: string, fonte?: string, limite?: number, offset?: number): Promise<{
+    itens: Array<{
+      id: string;
+      tipo_id: string;
+      descricao: string;
+      marca: string | null;
+      codigo_barras: string | null;
+      fonte_dados: string;
+      grupo: string | null;
+      resumo_macros_100g: {
+        calorias: number;
+        carboidratos: number;
+        proteinas: number;
+        gorduras: number;
+        fibras: number | null;
+      };
+    }>;
+    total: number;
   }>;
 
   syncPull(opts: {
@@ -645,6 +683,228 @@ export class DatabaseStorage implements IStorage {
       percentual,
       atingiu_meta: consumido_ml >= meta_ml,
     };
+  }
+
+  // ── TBCA ──
+  async getAllGrupos(): Promise<GrupoAlimentar[]> {
+    return db.select().from(gruposAlimentares).orderBy(asc(gruposAlimentares.codigo));
+  }
+
+  async getAllTipos(): Promise<TipoAlimento[]> {
+    return db.select().from(tiposAlimento).orderBy(asc(tiposAlimento.codigo));
+  }
+
+  async getAllNutrientes(): Promise<Nutriente[]> {
+    return db.select().from(nutrientes).orderBy(asc(nutrientes.nome));
+  }
+
+  async getAlimentoTbca(id: string): Promise<AlimentoTbca | undefined> {
+    const [r] = await db.select().from(alimentosTbca).where(and(eq(alimentosTbca.id, id), isNull(alimentosTbca.deletedAt)));
+    return r;
+  }
+
+  async getAlimentoTbcaByCodigo(codigo: string): Promise<AlimentoTbca | undefined> {
+    const [r] = await db.select().from(alimentosTbca).where(and(eq(alimentosTbca.codigoTbca, codigo), isNull(alimentosTbca.deletedAt)));
+    return r;
+  }
+
+  async searchAlimentosTbca(query: string, grupoId?: string, tipoId?: string, limite: number = 20, offset: number = 0) {
+    const conditions = [isNull(alimentosTbca.deletedAt)];
+    if (query) conditions.push(ilike(alimentosTbca.descricao, `%${query}%`));
+    if (grupoId) conditions.push(eq(alimentosTbca.grupoId, grupoId));
+    if (tipoId) conditions.push(eq(alimentosTbca.tipoId, tipoId));
+
+    const where = and(...conditions);
+    const itens = await db.select().from(alimentosTbca).where(where).orderBy(asc(alimentosTbca.descricao)).limit(limite).offset(offset);
+
+    const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(alimentosTbca).where(where);
+    return { itens, total: countResult?.count ?? 0 };
+  }
+
+  async getAlimentoNutrientes(alimentoTbcaId: string) {
+    const rows = await db
+      .select({
+        id: alimentoNutrientes.id,
+        alimentoTbcaId: alimentoNutrientes.alimentoTbcaId,
+        nutrienteId: alimentoNutrientes.nutrienteId,
+        valorPor100g: alimentoNutrientes.valorPor100g,
+        createdAt: alimentoNutrientes.createdAt,
+        nutriente: {
+          id: nutrientes.id,
+          codigo: nutrientes.codigo,
+          nome: nutrientes.nome,
+          unidade: nutrientes.unidade,
+          createdAt: nutrientes.createdAt,
+        },
+      })
+      .from(alimentoNutrientes)
+      .innerJoin(nutrientes, eq(alimentoNutrientes.nutrienteId, nutrientes.id))
+      .where(eq(alimentoNutrientes.alimentoTbcaId, alimentoTbcaId));
+    return rows;
+  }
+
+  async calcularNutricional(alimentoTbcaId: string, quantidadeG: number) {
+    const composicao = await this.getAlimentoNutrientes(alimentoTbcaId);
+    const result: Record<string, { nome: string; valor: number; unidade: string }> = {};
+    for (const item of composicao) {
+      const valorCalculado = (item.valorPor100g * quantidadeG) / 100;
+      result[item.nutriente.codigo] = {
+        nome: item.nutriente.nome,
+        valor: Math.round(valorCalculado * 100) / 100,
+        unidade: item.nutriente.unidade,
+      };
+    }
+    return result;
+  }
+
+  // ── Bridge TBCA → foods ──
+  async getFoodByAlimentoTbcaId(alimentoTbcaId: string): Promise<Food | undefined> {
+    const [r] = await db.select().from(foods).where(and(eq(foods.alimentoTbcaId, alimentoTbcaId), isNull(foods.deletedAt)));
+    return r;
+  }
+
+  async prepararParaConsumo(alimentoTbcaId: string, descricaoCustomizada?: string): Promise<Food> {
+    const existing = await this.getFoodByAlimentoTbcaId(alimentoTbcaId);
+    if (existing) return existing;
+
+    const tbca = await this.getAlimentoTbca(alimentoTbcaId);
+    if (!tbca) throw new Error("Alimento TBCA não encontrado.");
+
+    const composicao = await this.getAlimentoNutrientes(alimentoTbcaId);
+    const getMacro = (codigo: string) => composicao.find(c => c.nutriente.codigo === codigo)?.valorPor100g ?? 0;
+
+    const name = descricaoCustomizada || tbca.descricao;
+
+    const [existingByName] = await db.select().from(foods).where(
+      and(
+        eq(foods.name, name),
+        isNull(foods.deletedAt),
+        isNull(foods.alimentoTbcaId),
+      )
+    );
+    if (existingByName) {
+      const [updated] = await db.update(foods).set({
+        alimentoTbcaId,
+        caloriesKcal: getMacro("ENERGIA"),
+        proteinG: getMacro("PROTEINA"),
+        carbsG: getMacro("CARBOIDRATO"),
+        fatG: getMacro("GORDURA_TOTAL"),
+        fiberG: getMacro("FIBRA"),
+        updatedAt: new Date(),
+      }).where(eq(foods.id, existingByName.id)).returning();
+      return updated;
+    }
+
+    const [newFood] = await db.insert(foods).values({
+      name,
+      brand: tbca.marca,
+      barcode: tbca.codigoBarras,
+      alimentoTbcaId,
+      servingSizeG: tbca.porcaoBaseG,
+      caloriesKcal: getMacro("ENERGIA"),
+      proteinG: getMacro("PROTEINA"),
+      carbsG: getMacro("CARBOIDRATO"),
+      fatG: getMacro("GORDURA_TOTAL"),
+      fiberG: getMacro("FIBRA"),
+    }).returning();
+    return newFood;
+  }
+
+  // ── Unified search ──
+  async searchAlimentosUnificados(query: string, fonte: string = "TODOS", limite: number = 20, offset: number = 0) {
+    const results: Array<{
+      id: string;
+      tipo_id: string;
+      descricao: string;
+      marca: string | null;
+      codigo_barras: string | null;
+      fonte_dados: string;
+      grupo: string | null;
+      resumo_macros_100g: {
+        calorias: number;
+        carboidratos: number;
+        proteinas: number;
+        gorduras: number;
+        fibras: number | null;
+      };
+    }> = [];
+
+    let total = 0;
+
+    if (fonte === "TODOS" || fonte === "LEGADO") {
+      const legadoConditions = [isNull(foods.deletedAt)];
+      if (query) legadoConditions.push(ilike(foods.name, `%${query}%`));
+
+      const legadoItems = await db.select().from(foods).where(and(...legadoConditions)).orderBy(asc(foods.name)).limit(limite).offset(offset);
+      const [legadoCount] = await db.select({ count: sql<number>`count(*)::int` }).from(foods).where(and(...legadoConditions));
+
+      for (const f of legadoItems) {
+        results.push({
+          id: f.id,
+          tipo_id: "LEGADO",
+          descricao: f.name,
+          marca: f.brand,
+          codigo_barras: f.barcode,
+          fonte_dados: "LEGADO",
+          grupo: null,
+          resumo_macros_100g: {
+            calorias: f.caloriesKcal,
+            carboidratos: f.carbsG,
+            proteinas: f.proteinG,
+            gorduras: f.fatG,
+            fibras: f.fiberG,
+          },
+        });
+      }
+      total += legadoCount?.count ?? 0;
+    }
+
+    if (fonte === "TODOS" || fonte === "TBCA") {
+      const tbcaConditions = [isNull(alimentosTbca.deletedAt)];
+      if (query) tbcaConditions.push(ilike(alimentosTbca.descricao, `%${query}%`));
+
+      const tbcaItems = await db
+        .select({
+          id: alimentosTbca.id,
+          descricao: alimentosTbca.descricao,
+          marca: alimentosTbca.marca,
+          codigoBarras: alimentosTbca.codigoBarras,
+          grupoId: alimentosTbca.grupoId,
+          grupoCodigo: gruposAlimentares.codigo,
+        })
+        .from(alimentosTbca)
+        .leftJoin(gruposAlimentares, eq(alimentosTbca.grupoId, gruposAlimentares.id))
+        .where(and(...tbcaConditions))
+        .orderBy(asc(alimentosTbca.descricao))
+        .limit(fonte === "TODOS" ? Math.max(1, limite - results.length) : limite)
+        .offset(fonte === "TODOS" ? 0 : offset);
+
+      const [tbcaCount] = await db.select({ count: sql<number>`count(*)::int` }).from(alimentosTbca).where(and(...tbcaConditions));
+
+      for (const t of tbcaItems) {
+        const composicao = await this.getAlimentoNutrientes(t.id);
+        const getMacro = (codigo: string) => composicao.find(c => c.nutriente.codigo === codigo)?.valorPor100g ?? 0;
+        results.push({
+          id: t.id,
+          tipo_id: "TBCA",
+          descricao: t.descricao,
+          marca: t.marca,
+          codigo_barras: t.codigoBarras,
+          fonte_dados: "TBCA",
+          grupo: t.grupoCodigo ?? null,
+          resumo_macros_100g: {
+            calorias: getMacro("ENERGIA"),
+            carboidratos: getMacro("CARBOIDRATO"),
+            proteinas: getMacro("PROTEINA"),
+            gorduras: getMacro("GORDURA_TOTAL"),
+            fibras: getMacro("FIBRA"),
+          },
+        });
+      }
+      total += tbcaCount?.count ?? 0;
+    }
+
+    return { itens: results, total };
   }
 
   // ── Sync Pull (cursor-based, deterministic ordering) ──

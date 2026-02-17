@@ -7,7 +7,25 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 
-// Mock Data
+const CALORIE_GOAL = 2200;
+const PROTEIN_GOAL = 160;
+const CARBS_GOAL = 200;
+const FAT_GOAL = 70;
+
+const MEAL_EMOJIS: Record<string, string> = {
+  breakfast: "🥣",
+  lunch: "🥗",
+  snack: "🍎",
+  dinner: "🍽️",
+};
+
+const MEAL_NAMES: Record<string, string> = {
+  breakfast: "Café da Manhã",
+  lunch: "Almoço",
+  snack: "Lanche da Tarde",
+  dinner: "Jantar",
+};
+
 const WEIGHT_DATA = [
   { day: 'Seg', weight: 72.5 },
   { day: 'Ter', weight: 72.4 },
@@ -36,6 +54,28 @@ export default function HomeScreen() {
     refetchOnWindowFocus: true,
     enabled: !!userId,
   });
+
+  const { data: mealSummary } = useQuery<{
+    totalCalories: number;
+    totalProtein: number;
+    totalCarbs: number;
+    totalFat: number;
+    meals: Record<string, { items: any[]; calories: number; protein: number; carbs: number; fat: number }>;
+  }>({
+    queryKey: [`/api/users/${userId}/meals/summary`, `?date=${today}`],
+    enabled: !!userId,
+  });
+
+  const totalCal = mealSummary?.totalCalories ?? 0;
+  const totalProt = Math.round(mealSummary?.totalProtein ?? 0);
+  const totalCarbs = Math.round(mealSummary?.totalCarbs ?? 0);
+  const totalFat = Math.round(mealSummary?.totalFat ?? 0);
+  const calRemaining = Math.max(0, CALORIE_GOAL - totalCal);
+  const calProgress = Math.min(1, totalCal / CALORIE_GOAL);
+  const mealCount = mealSummary?.meals ? Object.values(mealSummary.meals).filter(m => m.items.length > 0).length : 0;
+  const recentMeals = mealSummary?.meals
+    ? Object.entries(mealSummary.meals).filter(([, m]) => m.items.length > 0).slice(0, 3)
+    : [];
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
@@ -87,33 +127,33 @@ export default function HomeScreen() {
              
              {/* Center Stats */}
              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-center mb-2">
-               <span className="block text-4xl font-display font-semibold text-[#2F5641]">1.420</span>
+               <span className="block text-4xl font-display font-semibold text-[#2F5641]" data-testid="text-home-calories">{totalCal.toLocaleString("pt-BR")}</span>
                <span className="text-[10px] text-[#8B9286] uppercase tracking-widest font-medium">Kcal Consumidas</span>
              </div>
            </div>
            
            {/* Left/Right Stats */}
            <div className="absolute top-[60px] left-0 text-left">
-             <span className="block text-sm font-bold text-[#8B9286]">780</span>
+             <span className="block text-sm font-bold text-[#8B9286]">{calRemaining}</span>
              <span className="text-[9px] text-[#8B9286] uppercase">Restantes</span>
            </div>
            <div className="absolute top-[60px] right-0 text-right">
-             <span className="block text-sm font-bold text-[#8B9286]">3</span>
+             <span className="block text-sm font-bold text-[#8B9286]">{mealCount}</span>
              <span className="text-[9px] text-[#8B9286] uppercase">Refeições</span>
            </div>
            
            {/* Macro Circles */}
            <div className="flex gap-8 mt-2">
              <div className="flex flex-col items-center gap-1">
-               <div className="w-10 h-10 rounded-full border-2 border-[#648D4A] flex items-center justify-center text-xs font-bold text-[#2F5641]">92g</div>
+               <div className="w-10 h-10 rounded-full border-2 border-[#648D4A] flex items-center justify-center text-xs font-bold text-[#2F5641]">{totalProt}g</div>
                <span className="text-[9px] font-medium text-[#8B9286]">PROT</span>
              </div>
              <div className="flex flex-col items-center gap-1">
-               <div className="w-10 h-10 rounded-full border-2 border-[#D97952] flex items-center justify-center text-xs font-bold text-[#2F5641]">120g</div>
+               <div className="w-10 h-10 rounded-full border-2 border-[#D97952] flex items-center justify-center text-xs font-bold text-[#2F5641]">{totalCarbs}g</div>
                <span className="text-[9px] font-medium text-[#8B9286]">CARB</span>
              </div>
              <div className="flex flex-col items-center gap-1">
-               <div className="w-10 h-10 rounded-full border-2 border-[#C7AE6A] flex items-center justify-center text-xs font-bold text-[#2F5641]">45g</div>
+               <div className="w-10 h-10 rounded-full border-2 border-[#C7AE6A] flex items-center justify-center text-xs font-bold text-[#2F5641]">{totalFat}g</div>
                <span className="text-[9px] font-medium text-[#8B9286]">GORD</span>
              </div>
            </div>
@@ -158,35 +198,27 @@ export default function HomeScreen() {
           </div>
           
           <div className="space-y-3">
-             <div className="bg-white p-3 rounded-xl border border-[#E8EBE5] shadow-sm flex items-center justify-between">
-               <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-lg bg-[#648D4A]/10 flex items-center justify-center text-lg">🥣</div>
-                 <div>
-                   <p className="text-sm font-semibold text-[#2F5641]">Café da Manhã</p>
-                   <p className="text-[10px] text-[#8B9286]">420 kcal</p>
-                 </div>
-               </div>
-               <div className="flex gap-1">
+            {recentMeals.length > 0 ? recentMeals.map(([slot, data]) => (
+              <div key={slot} className="bg-white p-3 rounded-xl border border-[#E8EBE5] shadow-sm flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-[#648D4A]/10 flex items-center justify-center text-lg">{MEAL_EMOJIS[slot] || "🍽️"}</div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#2F5641]">{MEAL_NAMES[slot] || slot}</p>
+                    <p className="text-[10px] text-[#8B9286]">{Math.round(data.calories)} kcal</p>
+                  </div>
+                </div>
+                <div className="flex gap-1">
                   <span className="w-2 h-2 rounded-full bg-[#648D4A]" title="Protein" />
                   <span className="w-2 h-2 rounded-full bg-[#D97952]" title="Carbs" />
                   <span className="w-2 h-2 rounded-full bg-[#C7AE6A]" title="Fats" />
-               </div>
-             </div>
-             
-             <div className="bg-white p-3 rounded-xl border border-[#E8EBE5] shadow-sm flex items-center justify-between">
-               <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-lg bg-[#648D4A]/10 flex items-center justify-center text-lg">🥗</div>
-                 <div>
-                   <p className="text-sm font-semibold text-[#2F5641]">Almoço</p>
-                   <p className="text-[10px] text-[#8B9286]">650 kcal</p>
-                 </div>
-               </div>
-               <div className="flex gap-1">
-                  <span className="w-2 h-2 rounded-full bg-[#648D4A]" title="Protein" />
-                  <span className="w-2 h-2 rounded-full bg-[#D97952]" title="Carbs" />
-                  <span className="w-2 h-2 rounded-full bg-[#C7AE6A]" title="Fats" />
-               </div>
-             </div>
+                </div>
+              </div>
+            )) : (
+              <div className="bg-white p-4 rounded-xl border border-[#E8EBE5] shadow-sm text-center">
+                <p className="text-xs text-[#8B9286]">Nenhuma refeição registrada hoje</p>
+                <button onClick={() => setLocation("/nutrition")} className="text-xs font-semibold text-[#C7AE6A] mt-2 hover:underline">Registrar agora</button>
+              </div>
+            )}
           </div>
         </section>
 

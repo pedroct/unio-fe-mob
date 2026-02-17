@@ -152,6 +152,139 @@ export const goals = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// GRUPO ALIMENTAR (food groups - TBCA)
+// ---------------------------------------------------------------------------
+export const gruposAlimentares = pgTable(
+  "grupos_alimentares",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    codigo: text("codigo").notNull().unique(),
+    descricao: text("descricao").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  }
+);
+
+export type GrupoAlimentar = typeof gruposAlimentares.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// TIPO ALIMENTO (food types - TBCA)
+// ---------------------------------------------------------------------------
+export const tiposAlimento = pgTable(
+  "tipos_alimento",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    codigo: text("codigo").notNull().unique(),
+    descricao: text("descricao").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  }
+);
+
+export type TipoAlimento = typeof tiposAlimento.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// NUTRIENTES (nutrients definition - TBCA)
+// ---------------------------------------------------------------------------
+export const nutrientes = pgTable(
+  "nutrientes",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    codigo: text("codigo").notNull().unique(),
+    nome: text("nome").notNull(),
+    unidade: text("unidade").notNull().default("g"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  }
+);
+
+export type Nutriente = typeof nutrientes.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// ALIMENTO TBCA (TBCA food items)
+// ---------------------------------------------------------------------------
+export const alimentosTbca = pgTable(
+  "alimentos_tbca",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    codigoTbca: text("codigo_tbca").notNull().unique(),
+    descricao: text("descricao").notNull(),
+    grupoId: uuid("grupo_id").references(() => gruposAlimentares.id),
+    tipoId: uuid("tipo_id").references(() => tiposAlimento.id),
+    marca: text("marca"),
+    codigoBarras: text("codigo_barras"),
+    porcaoBaseG: real("porcao_base_g").notNull().default(100),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("idx_alimentos_tbca_grupo").on(t.grupoId),
+    index("idx_alimentos_tbca_tipo").on(t.tipoId),
+    index("idx_alimentos_tbca_descricao").on(t.descricao),
+    index("idx_alimentos_tbca_codigo_barras").on(t.codigoBarras),
+  ]
+);
+
+export type AlimentoTbca = typeof alimentosTbca.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// ALIMENTO NUTRIENTE (nutritional composition per TBCA food)
+// ---------------------------------------------------------------------------
+export const alimentoNutrientes = pgTable(
+  "alimento_nutrientes",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    alimentoTbcaId: uuid("alimento_tbca_id").notNull().references(() => alimentosTbca.id),
+    nutrienteId: uuid("nutriente_id").notNull().references(() => nutrientes.id),
+    valorPor100g: real("valor_por_100g").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("idx_alimento_nutrientes_alimento").on(t.alimentoTbcaId),
+    uniqueIndex("idx_alimento_nutriente_unique").on(t.alimentoTbcaId, t.nutrienteId),
+  ]
+);
+
+export type AlimentoNutriente = typeof alimentoNutrientes.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// LOTE IMPORTACAO (import batches for TBCA data)
+// ---------------------------------------------------------------------------
+export const lotesImportacao = pgTable(
+  "lotes_importacao",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    fonte: text("fonte").notNull().default("TBCA"),
+    versao: text("versao"),
+    totalRegistros: integer("total_registros").notNull().default(0),
+    status: text("status").notNull().default("pendente"),
+    importadoEm: timestamp("importado_em", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  }
+);
+
+export type LoteImportacao = typeof lotesImportacao.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// LOG IMPORTACAO ALIMENTO (per-food import log)
+// ---------------------------------------------------------------------------
+export const logImportacaoAlimentos = pgTable(
+  "log_importacao_alimentos",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    loteId: uuid("lote_id").notNull().references(() => lotesImportacao.id),
+    alimentoTbcaId: uuid("alimento_tbca_id").references(() => alimentosTbca.id),
+    codigoTbca: text("codigo_tbca").notNull(),
+    status: text("status").notNull().default("sucesso"),
+    mensagem: text("mensagem"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("idx_log_importacao_lote").on(t.loteId),
+  ]
+);
+
+export type LogImportacaoAlimento = typeof logImportacaoAlimentos.$inferSelect;
+
+// ---------------------------------------------------------------------------
 // FOODS (alimentos)
 // ---------------------------------------------------------------------------
 export const foods = pgTable(
@@ -161,6 +294,7 @@ export const foods = pgTable(
     name: text("name").notNull(),
     brand: text("brand"),
     barcode: text("barcode"),
+    alimentoTbcaId: uuid("alimento_tbca_id").references(() => alimentosTbca.id),
     servingSizeG: real("serving_size_g").notNull().default(100),
     caloriesKcal: real("calories_kcal").notNull().default(0),
     proteinG: real("protein_g").notNull().default(0),
@@ -375,6 +509,16 @@ export const insertHydrationRecordSchema = createInsertSchema(hydrationRecords).
   deletedAt: true,
 });
 
+export const insertAlimentoTbcaSchema = createInsertSchema(alimentosTbca).omit({
+  id: true, createdAt: true, updatedAt: true, deletedAt: true,
+});
+export type InsertAlimentoTbca = z.infer<typeof insertAlimentoTbcaSchema>;
+
+export const insertAlimentoNutrienteSchema = createInsertSchema(alimentoNutrientes).omit({
+  id: true, createdAt: true,
+});
+export type InsertAlimentoNutriente = z.infer<typeof insertAlimentoNutrienteSchema>;
+
 export const BEVERAGE_TYPES = ["AGUA", "SUCO", "CAFE", "CHA", "LEITE", "ISOTONICO", "OUTRO"] as const;
 
 export const createHydrationSchema = z.object({
@@ -385,6 +529,31 @@ export const createHydrationSchema = z.object({
 
 export const updateMetaSchema = z.object({
   ml_meta_diaria: z.number().int().min(500, "Meta deve ser no mínimo 500ml.").max(10000, "Meta deve ser no máximo 10000ml."),
+});
+
+// ---------------------------------------------------------------------------
+// Nutrição Avançada Schemas
+// ---------------------------------------------------------------------------
+export const prepararParaConsumoSchema = z.object({
+  alimento_tbca_id: z.string().uuid("ID do alimento TBCA inválido."),
+  descricao_customizada: z.string().optional(),
+});
+
+export const registrarAvancadoSchema = z.object({
+  alimento_id: z.string().uuid().optional().nullable(),
+  alimento_tbca_id: z.string().uuid().optional().nullable(),
+  quantidade: z.number().positive("Quantidade deve ser maior que zero."),
+  refeicao_id: z.string().optional().nullable(),
+  meal_slot: z.string().optional().nullable(),
+  origem: z.enum(["MANUAL", "TBCA", "BARCODE"]).default("MANUAL"),
+}).refine(
+  (data) => data.alimento_id || data.alimento_tbca_id,
+  { message: "Informe alimento_id ou alimento_tbca_id.", path: ["alimento_id"] }
+);
+
+export const calcularNutricionalSchema = z.object({
+  alimento_tbca_id: z.string().uuid("ID do alimento TBCA inválido."),
+  quantidade_g: z.number().positive("Quantidade deve ser maior que zero."),
 });
 
 // ---------------------------------------------------------------------------
@@ -492,3 +661,7 @@ export type HydrationRecord = typeof hydrationRecords.$inferSelect;
 export type SyncPullQuery = z.infer<typeof syncPullQuerySchema>;
 export type SyncPushChange = z.infer<typeof syncPushChangeSchema>;
 export type SyncPushRequest = z.infer<typeof syncPushRequestSchema>;
+
+export type PrepararParaConsumo = z.infer<typeof prepararParaConsumoSchema>;
+export type RegistrarAvancado = z.infer<typeof registrarAvancadoSchema>;
+export type CalcularNutricional = z.infer<typeof calcularNutricionalSchema>;

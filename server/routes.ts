@@ -19,6 +19,9 @@ import {
   syncPullQuerySchema,
   syncPushRequestSchema,
   updateProfileSchema,
+  prepararParaConsumoSchema,
+  registrarAvancadoSchema,
+  calcularNutricionalSchema,
 } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -773,6 +776,190 @@ export async function registerRoutes(
       res.json(resumo);
     } catch (err) {
       res.status(500).json({ error: "Erro ao buscar resumo." });
+    }
+  });
+
+  // ── Nutrição TBCA ──
+
+  app.get("/api/nutricao/tbca/grupos", requireAuth, async (_req, res) => {
+    try {
+      const grupos = await storage.getAllGrupos();
+      res.json(grupos);
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar grupos alimentares." });
+    }
+  });
+
+  app.get("/api/nutricao/tbca/tipos", requireAuth, async (_req, res) => {
+    try {
+      const tipos = await storage.getAllTipos();
+      res.json(tipos);
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar tipos de alimento." });
+    }
+  });
+
+  app.get("/api/nutricao/tbca/nutrientes", requireAuth, async (_req, res) => {
+    try {
+      const nutrientes = await storage.getAllNutrientes();
+      res.json(nutrientes);
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar nutrientes." });
+    }
+  });
+
+  app.get("/api/nutricao/tbca/alimentos", requireAuth, async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const grupoId = req.query.grupo_id as string | undefined;
+      const tipoId = req.query.tipo_id as string | undefined;
+      const limite = parseInt(req.query.limite as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const result = await storage.searchAlimentosTbca(q, grupoId, tipoId, limite, offset);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar alimentos TBCA." });
+    }
+  });
+
+  app.get("/api/nutricao/tbca/alimentos/:id", requireAuth, async (req, res) => {
+    try {
+      const alimento = await storage.getAlimentoTbca(req.params.id);
+      if (!alimento) return res.status(404).json({ error: "Alimento TBCA não encontrado." });
+      const composicao = await storage.getAlimentoNutrientes(req.params.id);
+      res.json({ ...alimento, composicao });
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar alimento TBCA." });
+    }
+  });
+
+  app.get("/api/nutricao/tbca/alimentos/codigo/:codigo", requireAuth, async (req, res) => {
+    try {
+      const alimento = await storage.getAlimentoTbcaByCodigo(req.params.codigo);
+      if (!alimento) return res.status(404).json({ error: "Alimento TBCA não encontrado." });
+      const composicao = await storage.getAlimentoNutrientes(alimento.id);
+      res.json({ ...alimento, composicao });
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar alimento TBCA por código." });
+    }
+  });
+
+  app.post("/api/nutricao/tbca/calcular", requireAuth, async (req, res) => {
+    try {
+      const parsed = calcularNutricionalSchema.parse(req.body);
+      const alimento = await storage.getAlimentoTbca(parsed.alimento_tbca_id);
+      if (!alimento) return res.status(404).json({ error: "Alimento TBCA não encontrado." });
+      const resultado = await storage.calcularNutricional(parsed.alimento_tbca_id, parsed.quantidade_g);
+      res.json({
+        alimento_tbca_id: parsed.alimento_tbca_id,
+        descricao: alimento.descricao,
+        quantidade_g: parsed.quantidade_g,
+        nutrientes: resultado,
+      });
+    } catch (err) {
+      const { status, body } = handleZodFieldErrors(err);
+      res.status(status === 500 ? 500 : 422).json(body);
+    }
+  });
+
+  // ── Bridge TBCA → Consumo ──
+
+  app.post("/api/nutricao/alimentos/preparar-para-consumo", requireAuth, async (req, res) => {
+    try {
+      const parsed = prepararParaConsumoSchema.parse(req.body);
+      const food = await storage.prepararParaConsumo(parsed.alimento_tbca_id, parsed.descricao_customizada);
+      res.json({
+        alimento_id: food.id,
+        alimento_tbca_id: parsed.alimento_tbca_id,
+        nome: food.name,
+        fonte_dados: "TBCA",
+      });
+    } catch (err: any) {
+      if (err.message === "Alimento TBCA não encontrado.") {
+        return res.status(404).json({ error: err.message });
+      }
+      const { status, body } = handleZodFieldErrors(err);
+      res.status(status === 500 ? 500 : 422).json(body);
+    }
+  });
+
+  // ── Busca Unificada ──
+
+  app.get("/api/nutricao/alimentos-unificados/buscar", requireAuth, async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const fonte = ((req.query.fonte as string) || "TODOS").toUpperCase();
+      const limite = parseInt(req.query.limite as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      if (!["LEGADO", "TBCA", "TODOS"].includes(fonte)) {
+        return res.status(422).json({ errors: [{ field: "fonte", message: "Fonte deve ser LEGADO, TBCA ou TODOS." }] });
+      }
+
+      const result = await storage.searchAlimentosUnificados(q, fonte, limite, offset);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar alimentos." });
+    }
+  });
+
+  // ── Registro Avançado no Diário ──
+
+  app.post("/api/nutricao/diario/registrar-avancado", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const parsed = registrarAvancadoSchema.parse(req.body);
+
+      let foodId = parsed.alimento_id;
+
+      if (parsed.alimento_tbca_id && !foodId) {
+        const food = await storage.prepararParaConsumo(parsed.alimento_tbca_id);
+        foodId = food.id;
+      }
+
+      if (!foodId) {
+        return res.status(422).json({ errors: [{ field: "alimento_id", message: "Alimento não identificado." }] });
+      }
+
+      const food = await storage.getFood(foodId);
+      if (!food) {
+        return res.status(404).json({ error: "Alimento não encontrado." });
+      }
+
+      const mealSlot = parsed.meal_slot || parsed.refeicao_id || "lanche";
+      const entry = await storage.createMealEntry({
+        userId,
+        foodId,
+        mealSlot,
+        quantityG: parsed.quantidade,
+        unit: "g",
+      });
+
+      const fator = parsed.quantidade / (food.servingSizeG || 100);
+      const macros = {
+        calorias: Math.round((food.caloriesKcal * fator) * 100) / 100,
+        proteinas: Math.round((food.proteinG * fator) * 100) / 100,
+        carboidratos: Math.round((food.carbsG * fator) * 100) / 100,
+        gorduras: Math.round((food.fatG * fator) * 100) / 100,
+      };
+
+      res.status(201).json({
+        id: entry.id,
+        alimento_id: foodId,
+        alimento_tbca_id: food.alimentoTbcaId || parsed.alimento_tbca_id || null,
+        descricao: food.name,
+        quantidade_g: parsed.quantidade,
+        meal_slot: mealSlot,
+        origem: parsed.origem,
+        macros_calculados: macros,
+        mensagem: "Registro alimentar criado com sucesso.",
+      });
+    } catch (err: any) {
+      if (err.message === "Alimento TBCA não encontrado.") {
+        return res.status(404).json({ error: err.message });
+      }
+      const { status, body } = handleZodFieldErrors(err);
+      res.status(status === 500 ? 500 : 422).json(body);
     }
   });
 
