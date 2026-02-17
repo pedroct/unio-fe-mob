@@ -116,16 +116,38 @@ export default function HomeScreen() {
 
         {/* Caloric Gauge Section */}
         <div className="flex flex-col items-center relative mb-2">
-           {/* Semicircle Gauge CSS */}
-           <div className="relative w-[240px] h-[120px] overflow-hidden mb-4">
-             <div className="absolute top-0 left-0 w-[240px] h-[240px] rounded-full border-[12px] border-[#E8EBE5]" />
-             <div 
-               className="absolute top-0 left-0 w-[240px] h-[240px] rounded-full border-[12px] border-[#648D4A] transition-all duration-1000 ease-out"
-               style={{ 
-                 clipPath: "polygon(0 0, 100% 0, 100% 50%, 0 50%)",
-                 transform: "rotate(45deg)" // Represents progress
-               }} 
-             />
+           {/* Semicircle Gauge SVG */}
+           <div className="relative w-[240px] h-[132px] mb-4">
+             <svg viewBox="0 0 240 132" className="w-full h-full">
+               {(() => {
+                 const cx = 120, cy = 120, r = 108;
+                 const arcLength = Math.PI * r;
+                 const filled = arcLength * Math.min(calProgress, 1);
+                 return (
+                   <>
+                     <path
+                       d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+                       fill="none"
+                       stroke="#E8EBE5"
+                       strokeWidth="12"
+                       strokeLinecap="round"
+                     />
+                     {calProgress > 0 && (
+                       <path
+                         d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+                         fill="none"
+                         stroke="#648D4A"
+                         strokeWidth="12"
+                         strokeLinecap="round"
+                         strokeDasharray={`${arcLength}`}
+                         strokeDashoffset={`${arcLength - filled}`}
+                         className="transition-all duration-1000 ease-out"
+                       />
+                     )}
+                   </>
+                 );
+               })()}
+             </svg>
              
              {/* Center Stats */}
              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-center mb-2">
