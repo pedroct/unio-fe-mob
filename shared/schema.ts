@@ -30,6 +30,7 @@ export const users = pgTable(
     birthDate: text("birth_date"),
     sex: text("sex"),
     activityLevel: text("activity_level"),
+    scaleMac: text("scale_mac"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -371,6 +372,54 @@ export const insertHydrationRecordSchema = createInsertSchema(hydrationRecords).
   updatedAt: true,
   deletedAt: true,
 });
+
+// ---------------------------------------------------------------------------
+// Profile Update Schema (dedicated validation)
+// ---------------------------------------------------------------------------
+export const updateProfileSchema = z.object({
+  displayName: z
+    .string()
+    .min(1, "Nome é obrigatório.")
+    .transform((v) => v.trim())
+    .refine((v) => v.length > 0, "Nome é obrigatório."),
+  birthDate: z
+    .string()
+    .optional()
+    .nullable()
+    .refine(
+      (v) => {
+        if (!v) return true;
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return false;
+        return d <= new Date();
+      },
+      "Data de nascimento inválida ou futura."
+    ),
+  heightCm: z
+    .number()
+    .positive("Altura deve ser um número positivo.")
+    .optional()
+    .nullable(),
+  sex: z.enum(["M", "F"], { message: "Sexo deve ser M ou F." }).optional().nullable(),
+  activityLevel: z
+    .enum(["sedentary", "light", "moderate", "active"])
+    .optional()
+    .nullable(),
+  scaleMac: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((v) => (v ? v.toUpperCase().replace(/[^A-F0-9:]/gi, "") : v))
+    .refine(
+      (v) => {
+        if (!v) return true;
+        return /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(v);
+      },
+      "MAC inválido. Use o formato AA:BB:CC:DD:EE:FF."
+    ),
+});
+
+export type UpdateProfile = z.infer<typeof updateProfileSchema>;
 
 // ---------------------------------------------------------------------------
 // Sync API Schemas

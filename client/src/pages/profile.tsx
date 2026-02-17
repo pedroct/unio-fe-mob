@@ -1,18 +1,69 @@
 import Layout from "@/components/layout";
-import { ChevronLeft, Camera, Settings, Smartphone, Footprints, Flame, Moon, LogOut, AlertCircle } from "lucide-react";
+import { ChevronLeft, Camera, Settings, LogOut, AlertCircle, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+
+interface ProfileData {
+  displayName: string | null;
+  email: string | null;
+  heightCm: number | null;
+  birthDate: string | null;
+  sex: string | null;
+  activityLevel: string | null;
+  scaleMac: string | null;
+  avatarUrl: string | null;
+}
+
+interface FieldError {
+  field: string;
+  message: string;
+}
+
+function formatMacInput(value: string): string {
+  const hex = value.toUpperCase().replace(/[^A-F0-9]/g, "").slice(0, 12);
+  const parts: string[] = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    parts.push(hex.slice(i, i + 2));
+  }
+  return parts.join(":");
+}
+
+function formatBirthDateInput(raw: string): { display: string; iso: string | null } {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  let display = digits;
+  if (digits.length > 2) display = digits.slice(0, 2) + "/" + digits.slice(2);
+  if (digits.length > 4) display = digits.slice(0, 2) + "/" + digits.slice(2, 4) + "/" + digits.slice(4);
+
+  let iso: string | null = null;
+  if (digits.length === 8) {
+    const dd = digits.slice(0, 2);
+    const mm = digits.slice(2, 4);
+    const yyyy = digits.slice(4, 8);
+    iso = `${yyyy}-${mm}-${dd}`;
+  }
+  return { display, iso };
+}
+
+function isoToDisplay(iso: string | null): string {
+  if (!iso) return "";
+  if (iso.includes("-")) {
+    const parts = iso.split("-");
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return iso;
+}
 
 export default function ProfileScreen() {
   const [, setLocation] = useLocation();
   const { user, logout, refreshUser } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [birthDateDisplay, setBirthDateDisplay] = useState("");
 
   const [form, setForm] = useState({
     displayName: "",
@@ -21,67 +72,120 @@ export default function ProfileScreen() {
     birthDate: "",
     sex: "",
     activityLevel: "",
+    scaleMac: "",
+  });
+
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ["profile"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/auth/profile");
+      if (!res.ok) throw new Error("Erro ao carregar perfil.");
+      return res.json();
+    },
   });
 
   useEffect(() => {
-    if (user) {
+    if (profileQuery.data) {
+      const p = profileQuery.data;
       setForm({
-        displayName: user.displayName || "",
-        email: user.email || "",
-        heightCm: user.heightCm ? String(user.heightCm) : "",
-        birthDate: user.birthDate || "",
-        sex: user.sex || "",
-        activityLevel: user.activityLevel || "",
+        displayName: p.displayName || "",
+        email: p.email || "",
+        heightCm: p.heightCm ? String(p.heightCm) : "",
+        birthDate: p.birthDate || "",
+        sex: p.sex || "",
+        activityLevel: p.activityLevel || "",
+        scaleMac: p.scaleMac || "",
       });
+      setBirthDateDisplay(isoToDisplay(p.birthDate));
     }
-  }, [user]);
+  }, [profileQuery.data]);
 
   const saveMutation = useMutation({
     mutationFn: async (data: Record<string, any>) => {
-      const res = await apiFetch(`/api/users/${user!.id}`, {
+      const res = await apiFetch("/api/auth/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+      const json = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Erro ao salvar.");
+        throw json;
       }
-      return res.json();
+      return json as ProfileData;
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      setFieldErrors({});
       await refreshUser();
+      const p = data;
+      setForm({
+        displayName: p.displayName || "",
+        email: p.email || "",
+        heightCm: p.heightCm ? String(p.heightCm) : "",
+        birthDate: p.birthDate || "",
+        sex: p.sex || "",
+        activityLevel: p.activityLevel || "",
+        scaleMac: p.scaleMac || "",
+      });
+      setBirthDateDisplay(isoToDisplay(p.birthDate));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     },
+    onError: (err: any) => {
+      if (err?.errors && Array.isArray(err.errors)) {
+        const mapped: Record<string, string> = {};
+        for (const e of err.errors as FieldError[]) {
+          mapped[e.field] = e.message;
+        }
+        setFieldErrors(mapped);
+      } else {
+        setFieldErrors({ _general: err?.error || "Erro ao salvar perfil." });
+      }
+    },
   });
 
-  const validate = () => {
-    const newErrors: { [key: string]: string } = {};
-    if (!form.displayName.trim()) newErrors.displayName = "Informe seu nome.";
-    if (form.heightCm && (isNaN(parseInt(form.heightCm)) || parseInt(form.heightCm) <= 0)) {
-      newErrors.heightCm = "Informe uma altura válida em centímetros.";
-    }
+  const validateClient = (): boolean => {
+    const errs: Record<string, string> = {};
+
+    if (!form.displayName.trim()) errs.displayName = "Nome é obrigatório.";
+
     if (form.birthDate) {
-      const parts = form.birthDate.split("-");
-      if (parts.length === 3) {
-        const date = new Date(form.birthDate);
-        if (date > new Date()) newErrors.birthDate = "Informe uma data de nascimento válida.";
+      const d = new Date(form.birthDate);
+      if (isNaN(d.getTime())) {
+        errs.birthDate = "Data de nascimento inválida.";
+      } else if (d > new Date()) {
+        errs.birthDate = "Data de nascimento não pode ser futura.";
       }
     }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+
+    if (form.heightCm) {
+      const h = parseFloat(form.heightCm);
+      if (isNaN(h) || h <= 0) errs.heightCm = "Altura deve ser um número positivo.";
+    }
+
+    if (form.sex && !["M", "F"].includes(form.sex)) {
+      errs.sex = "Sexo deve ser M ou F.";
+    }
+
+    if (form.scaleMac) {
+      if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(form.scaleMac)) {
+        errs.scaleMac = "MAC inválido. Use o formato AA:BB:CC:DD:EE:FF.";
+      }
+    }
+
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
   const handleSave = () => {
-    if (!validate()) return;
+    if (!validateClient()) return;
     const payload: Record<string, any> = {
       displayName: form.displayName,
     };
-    if (form.heightCm) payload.heightCm = parseFloat(form.heightCm);
-    if (form.birthDate) payload.birthDate = form.birthDate;
-    if (form.sex) payload.sex = form.sex;
-    if (form.activityLevel) payload.activityLevel = form.activityLevel;
+    payload.birthDate = form.birthDate || null;
+    payload.heightCm = form.heightCm ? parseFloat(form.heightCm) : null;
+    payload.sex = form.sex || null;
+    payload.activityLevel = form.activityLevel || null;
+    payload.scaleMac = form.scaleMac || null;
     saveMutation.mutate(payload);
   };
 
@@ -93,24 +197,33 @@ export default function ProfileScreen() {
 
   const photo = user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.displayName || "user"}`;
 
-  const goals = {
-    steps: 10000,
-    calories: 2200,
-    sleep: 8,
-  };
+  if (profileQuery.isLoading) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center" data-testid="loading-profile">
+          <Loader2 className="w-8 h-8 animate-spin text-[#2F5641]" />
+        </div>
+      </Layout>
+    );
+  }
 
-  const devices = user ? [
-    { id: 1, name: "Xiaomi Body Composition Scale 2", mac: "C0:11:22:33:44:55", type: "scale", connected: true }
-  ] : [];
-
-  const professionals = [
-    { id: 1, name: "Dr. Ana Silva", role: "Nutricionista", image: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ana" },
-    { id: 2, name: "Carlos Oliveira", role: "Personal Trainer", image: "https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos" }
-  ];
-
-  const birthDateDisplay = form.birthDate?.includes("-")
-    ? form.birthDate.split("-").reverse().join("/")
-    : form.birthDate;
+  if (profileQuery.isError) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4" data-testid="error-profile">
+          <AlertCircle className="w-12 h-12 text-[#BE4E35]" />
+          <p className="text-sm text-[#BE4E35] text-center">Não foi possível carregar seu perfil.</p>
+          <button
+            onClick={() => profileQuery.refetch()}
+            className="bg-[#2F5641] text-white px-6 py-2 rounded-xl text-sm font-medium"
+            data-testid="button-retry"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -131,21 +244,23 @@ export default function ProfileScreen() {
 
         <main className="px-6 space-y-8">
 
-          {saveSuccess && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="bg-[#648D4A]/10 border border-[#648D4A]/20 rounded-xl px-4 py-3 text-sm text-[#648D4A] font-medium"
-              data-testid="text-save-success"
-            >
-              Perfil atualizado com sucesso.
-            </motion.div>
-          )}
+          <AnimatePresence>
+            {saveSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="bg-[#648D4A]/10 border border-[#648D4A]/20 rounded-xl px-4 py-3 text-sm text-[#648D4A] font-medium"
+                data-testid="text-save-success"
+              >
+                Perfil atualizado com sucesso.
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          {saveMutation.isError && (
-            <div className="bg-[#BE4E35]/10 border border-[#BE4E35]/20 rounded-xl px-4 py-3 text-sm text-[#BE4E35]">
-              {saveMutation.error?.message || "Erro ao salvar."}
+          {fieldErrors._general && (
+            <div className="bg-[#BE4E35]/10 border border-[#BE4E35]/20 rounded-xl px-4 py-3 text-sm text-[#BE4E35]" data-testid="text-save-error">
+              {fieldErrors._general}
             </div>
           )}
 
@@ -164,34 +279,38 @@ export default function ProfileScreen() {
             </div>
 
             <div className="w-full space-y-4">
-               <div>
-                 <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide mb-3">Conta</h2>
-                 <div className="space-y-3">
-                   <div>
-                     <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nome</label>
-                     <input
-                       type="text"
-                       value={form.displayName}
-                       onChange={(e) => setForm({...form, displayName: e.target.value})}
-                       placeholder="Digite seu nome"
-                       className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${errors.displayName ? 'border-[#BE4E35]' : 'border-[#E8EBE5]'}`}
-                       data-testid="input-name"
-                     />
-                     {errors.displayName && <p className="text-[#BE4E35] text-[10px] mt-1 flex items-center gap-1"><AlertCircle size={10} /> {errors.displayName}</p>}
-                   </div>
-                   <div>
-                     <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">E-mail</label>
-                     <input
-                       type="email"
-                       value={form.email}
-                       disabled
-                       placeholder="seuemail@exemplo.com"
-                       className="w-full bg-[#F5F3EE] border border-[#E8EBE5] rounded-xl px-4 py-3 text-sm font-medium text-[#8B9286] cursor-not-allowed"
-                       data-testid="input-email"
-                     />
-                   </div>
-                 </div>
-               </div>
+              <div>
+                <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide mb-3">Conta</h2>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nome</label>
+                    <input
+                      type="text"
+                      value={form.displayName}
+                      onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+                      placeholder="Digite seu nome"
+                      className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.displayName ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                      data-testid="input-name"
+                    />
+                    {fieldErrors.displayName && (
+                      <p className="text-[#BE4E35] text-[10px] mt-1 flex items-center gap-1" data-testid="error-name">
+                        <AlertCircle size={10} /> {fieldErrors.displayName}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">E-mail</label>
+                    <input
+                      type="email"
+                      value={form.email}
+                      disabled
+                      placeholder="seuemail@exemplo.com"
+                      className="w-full bg-[#F5F3EE] border border-[#E8EBE5] rounded-xl px-4 py-3 text-sm font-medium text-[#8B9286] cursor-not-allowed"
+                      data-testid="input-email"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -200,167 +319,110 @@ export default function ProfileScreen() {
               Dados pessoais
             </h2>
             <div className="grid grid-cols-2 gap-3">
-               <div>
-                 <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Altura (cm)</label>
-                 <input
-                   type="number"
-                   value={form.heightCm}
-                   onChange={(e) => setForm({...form, heightCm: e.target.value})}
-                   placeholder="Ex.: 178"
-                   className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${errors.heightCm ? 'border-[#BE4E35]' : 'border-[#E8EBE5]'}`}
-                   data-testid="input-height"
-                 />
-                 {errors.heightCm && <p className="text-[#BE4E35] text-[10px] mt-1">{errors.heightCm}</p>}
-               </div>
-               <div>
-                 <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nascimento</label>
-                 <input
-                   type="text"
-                   value={birthDateDisplay}
-                   onChange={(e) => {
-                     const raw = e.target.value.replace(/\D/g, '').slice(0, 8);
-                     let formatted = raw;
-                     if (raw.length > 2) formatted = raw.slice(0, 2) + '/' + raw.slice(2);
-                     if (raw.length > 4) formatted = raw.slice(0, 2) + '/' + raw.slice(2, 4) + '/' + raw.slice(4);
-                     const parts = formatted.split('/');
-                     if (parts.length === 3 && parts[2].length === 4) {
-                       setForm({...form, birthDate: `${parts[2]}-${parts[1]}-${parts[0]}`});
-                     } else {
-                       setForm({...form, birthDate: formatted});
-                     }
-                   }}
-                   placeholder="DD/MM/AAAA"
-                   inputMode="numeric"
-                   maxLength={10}
-                   className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${errors.birthDate ? 'border-[#BE4E35]' : 'border-[#E8EBE5]'}`}
-                   data-testid="input-birthdate"
-                 />
-                 {errors.birthDate && <p className="text-[#BE4E35] text-[10px] mt-1">{errors.birthDate}</p>}
-               </div>
-               <div>
-                 <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Sexo</label>
-                 <select
-                   value={form.sex}
-                   onChange={(e) => setForm({...form, sex: e.target.value})}
-                   className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${errors.sex ? 'border-[#BE4E35]' : 'border-[#E8EBE5]'}`}
-                   data-testid="select-sex"
-                 >
-                   <option value="" disabled>Selecione</option>
-                   <option value="M">Masculino</option>
-                   <option value="F">Feminino</option>
-                 </select>
-               </div>
-               <div>
-                 <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nível atividade</label>
-                 <select
-                   value={form.activityLevel}
-                   onChange={(e) => setForm({...form, activityLevel: e.target.value})}
-                   className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${errors.activityLevel ? 'border-[#BE4E35]' : 'border-[#E8EBE5]'}`}
-                   data-testid="select-activity"
-                 >
-                   <option value="" disabled>Selecione</option>
-                   <option value="sedentary">Sedentário</option>
-                   <option value="light">Atividade leve</option>
-                   <option value="moderate">Atividade moderada</option>
-                   <option value="active">Muito ativo</option>
-                 </select>
-               </div>
-            </div>
-            <p className="text-[10px] text-[#8B9286] mt-2 opacity-80">
-              Seus dados ajudam a personalizar recomendações e metas.
-            </p>
-          </section>
-
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide">
-                Meus objetivos
-              </h2>
-              <button className="text-[10px] font-bold text-[#C7AE6A] uppercase tracking-wider hover:underline">
-                Gerenciar objetivos
-              </button>
-            </div>
-            <div className="space-y-3">
-               <div className="bg-white p-4 rounded-xl border border-[#E8EBE5] flex items-center justify-between">
-                 <div className="flex items-center gap-3">
-                   <div className="w-8 h-8 rounded-full bg-[#E8EBE5] flex items-center justify-center text-[#2F5641]">
-                     <Footprints size={16} />
-                   </div>
-                   <span className="text-sm font-medium text-[#2F5641]">Meta de passos</span>
-                 </div>
-                 <span className="font-bold text-[#2F5641]">{goals.steps.toLocaleString()}</span>
-               </div>
-               <div className="bg-white p-4 rounded-xl border border-[#E8EBE5] flex items-center justify-between">
-                 <div className="flex items-center gap-3">
-                   <div className="w-8 h-8 rounded-full bg-[#E8EBE5] flex items-center justify-center text-[#D97952]">
-                     <Flame size={16} />
-                   </div>
-                   <span className="text-sm font-medium text-[#2F5641]">Meta de calorias</span>
-                 </div>
-                 <span className="font-bold text-[#2F5641]">{goals.calories.toLocaleString('pt-BR')} kcal</span>
-               </div>
-               <div className="bg-white p-4 rounded-xl border border-[#E8EBE5] flex items-center justify-between">
-                 <div className="flex items-center gap-3">
-                   <div className="w-8 h-8 rounded-full bg-[#E8EBE5] flex items-center justify-center text-[#3D7A8C]">
-                     <Moon size={16} />
-                   </div>
-                   <span className="text-sm font-medium text-[#2F5641]">Meta de sono</span>
-                 </div>
-                 <span className="font-bold text-[#2F5641]">{goals.sleep} h</span>
-               </div>
-            </div>
-          </section>
-
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide">
-                Dispositivos
-              </h2>
-              <button
-                onClick={() => setLocation("/biometrics/devices")}
-                className="text-[10px] font-bold text-[#C7AE6A] uppercase tracking-wider hover:underline"
-              >
-                Gerenciar
-              </button>
-            </div>
-            <div className="space-y-3">
-              {devices.map(device => (
-                <div key={device.id} className="bg-white p-4 rounded-xl border border-[#E8EBE5] flex items-center justify-between">
-                   <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 rounded-full bg-[#FAFBF8] border border-[#E8EBE5] flex items-center justify-center text-[#2F5641]">
-                       {device.type === 'scale' ? '⚖️' : '⌚'}
-                     </div>
-                     <div>
-                       <p className="text-sm font-semibold text-[#2F5641]">{device.name}</p>
-                       <p className="text-[10px] text-[#8B9286] font-mono">{device.mac}</p>
-                     </div>
-                   </div>
-                   <div className="flex flex-col items-end gap-1">
-                     <span className="text-[10px] font-bold text-[#648D4A] uppercase tracking-wide">Conectado</span>
-                   </div>
-                </div>
-              ))}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Altura (cm)</label>
+                <input
+                  type="number"
+                  value={form.heightCm}
+                  onChange={(e) => setForm({ ...form, heightCm: e.target.value })}
+                  placeholder="Ex.: 178"
+                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.heightCm ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                  data-testid="input-height"
+                />
+                {fieldErrors.heightCm && (
+                  <p className="text-[#BE4E35] text-[10px] mt-1" data-testid="error-height">
+                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.heightCm}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nascimento</label>
+                <input
+                  type="text"
+                  value={birthDateDisplay}
+                  onChange={(e) => {
+                    const { display, iso } = formatBirthDateInput(e.target.value);
+                    setBirthDateDisplay(display);
+                    if (iso) {
+                      setForm({ ...form, birthDate: iso });
+                    } else if (display === "") {
+                      setForm({ ...form, birthDate: "" });
+                    }
+                  }}
+                  placeholder="DD/MM/AAAA"
+                  inputMode="numeric"
+                  maxLength={10}
+                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.birthDate ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                  data-testid="input-birthdate"
+                />
+                {fieldErrors.birthDate && (
+                  <p className="text-[#BE4E35] text-[10px] mt-1" data-testid="error-birthdate">
+                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.birthDate}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Sexo</label>
+                <select
+                  value={form.sex}
+                  onChange={(e) => setForm({ ...form, sex: e.target.value })}
+                  className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.sex ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                  data-testid="select-sex"
+                >
+                  <option value="" disabled>Selecione</option>
+                  <option value="M">Masculino</option>
+                  <option value="F">Feminino</option>
+                </select>
+                {fieldErrors.sex && (
+                  <p className="text-[#BE4E35] text-[10px] mt-1" data-testid="error-sex">
+                    <AlertCircle size={10} className="inline mr-1" />{fieldErrors.sex}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">Nível atividade</label>
+                <select
+                  value={form.activityLevel}
+                  onChange={(e) => setForm({ ...form, activityLevel: e.target.value })}
+                  className="w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] border-[#E8EBE5]"
+                  data-testid="select-activity"
+                >
+                  <option value="" disabled>Selecione</option>
+                  <option value="sedentary">Sedentário</option>
+                  <option value="light">Atividade leve</option>
+                  <option value="moderate">Atividade moderada</option>
+                  <option value="active">Muito ativo</option>
+                </select>
+              </div>
             </div>
           </section>
 
           <section>
             <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide mb-4">
-              Profissionais vinculados
+              Dispositivos
             </h2>
-            <div className="space-y-3">
-              {professionals.map(prof => (
-                <div key={prof.id} className="bg-white p-4 rounded-xl border border-[#E8EBE5] flex items-center justify-between shadow-sm">
-                   <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 rounded-full bg-[#E8EBE5] overflow-hidden">
-                       <img src={prof.image} alt={prof.name} />
-                     </div>
-                     <div>
-                       <p className="text-sm font-semibold text-[#2F5641]">{prof.name}</p>
-                       <p className="text-[10px] text-[#8B9286] uppercase tracking-wide">{prof.role}</p>
-                     </div>
-                   </div>
-                </div>
-              ))}
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">MAC da balança</label>
+              <input
+                type="text"
+                value={form.scaleMac}
+                onChange={(e) => {
+                  const formatted = formatMacInput(e.target.value);
+                  setForm({ ...form, scaleMac: formatted });
+                }}
+                placeholder="AA:BB:CC:DD:EE:FF"
+                maxLength={17}
+                className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium font-mono text-[#2F5641] focus:outline-none focus:border-[#2F5641] ${fieldErrors.scaleMac ? "border-[#BE4E35]" : "border-[#E8EBE5]"}`}
+                data-testid="input-scale-mac"
+              />
+              {fieldErrors.scaleMac && (
+                <p className="text-[#BE4E35] text-[10px] mt-1" data-testid="error-scale-mac">
+                  <AlertCircle size={10} className="inline mr-1" />{fieldErrors.scaleMac}
+                </p>
+              )}
+              <p className="text-[10px] text-[#8B9286] mt-2 opacity-80">
+                Endereço MAC da sua Xiaomi Mi Scale 2 para conexão Bluetooth.
+              </p>
             </div>
           </section>
 
@@ -373,14 +435,14 @@ export default function ProfileScreen() {
           </button>
 
           <div className="fixed bottom-[90px] left-6 right-6 max-w-[382px] mx-auto z-20">
-             <button
-               onClick={handleSave}
-               disabled={saveMutation.isPending}
-               className="w-full bg-[#2F5641] text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-[#2F5641]/25 active:scale-[0.98] transition-all disabled:opacity-60"
-               data-testid="button-save"
-             >
-               {saveMutation.isPending ? "Salvando..." : "Salvar alterações"}
-             </button>
+            <button
+              onClick={handleSave}
+              disabled={saveMutation.isPending}
+              className="w-full bg-[#2F5641] text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-[#2F5641]/25 active:scale-[0.98] transition-all disabled:opacity-60"
+              data-testid="button-save"
+            >
+              {saveMutation.isPending ? "Salvando..." : "Salvar alterações"}
+            </button>
           </div>
 
         </main>
@@ -415,6 +477,7 @@ export default function ProfileScreen() {
                   <button
                     onClick={() => setShowLogoutModal(false)}
                     className="w-full bg-[#F5F3EE] text-[#8B9286] py-3.5 rounded-xl font-bold text-sm active:scale-[0.98] transition-all"
+                    data-testid="button-cancel-logout"
                   >
                     Cancelar
                   </button>

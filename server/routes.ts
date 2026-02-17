@@ -15,6 +15,7 @@ import {
   insertHydrationRecordSchema,
   syncPullQuerySchema,
   syncPushRequestSchema,
+  updateProfileSchema,
 } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -40,6 +41,27 @@ function handleZodError(err: unknown) {
   return { status: 500, body: { error: String(err) } };
 }
 
+function handleZodFieldErrors(err: unknown) {
+  if (err instanceof ZodError) {
+    const errors = err.issues.map((issue) => ({
+      field: issue.path.join(".") || "unknown",
+      message: issue.message,
+    }));
+    return { status: 400, body: { errors } };
+  }
+  return { status: 500, body: { errors: [{ field: "unknown", message: String(err) }] } };
+}
+
+const PROFILE_FIELDS = ["displayName", "email", "heightCm", "birthDate", "sex", "activityLevel", "scaleMac", "avatarUrl"] as const;
+
+function sanitizeProfile(user: any) {
+  const result: Record<string, any> = {};
+  for (const key of PROFILE_FIELDS) {
+    result[key] = user[key] ?? null;
+  }
+  return result;
+}
+
 const DATE_FIELDS = ["createdAt", "updatedAt", "deletedAt", "measuredAt", "expiresAt", "syncedAt", "lastSeenAt", "startDate", "endDate", "consumedAt"];
 function coerceDates(data: Record<string, any>): Record<string, any> {
   const result = { ...data };
@@ -55,6 +77,7 @@ function sanitizeUser(user: any) {
   const { passwordHash, tokenVersion, failedLoginAttempts, lastLoginIp, lastLoginUserAgent, ...rest } = user;
   return rest;
 }
+
 
 function getUserId(req: Request): string {
   return (req as any).userId;
@@ -254,6 +277,37 @@ export async function registerRoutes(
       return res.status(401).json({ error: "Usuário não encontrado." });
     }
     res.json(sanitizeUser(user));
+  });
+
+  app.get("/api/auth/profile", requireAuth, async (req, res) => {
+    const userId = getUserId(req);
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return res.status(401).json({ error: "Usuário não encontrado." });
+    }
+    res.json(sanitizeProfile(user));
+  });
+
+  app.patch("/api/auth/profile", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const parsed = updateProfileSchema.parse(req.body);
+      const updateData: Record<string, any> = { displayName: parsed.displayName };
+      if (parsed.birthDate !== undefined) updateData.birthDate = parsed.birthDate;
+      if (parsed.heightCm !== undefined) updateData.heightCm = parsed.heightCm;
+      if (parsed.sex !== undefined) updateData.sex = parsed.sex;
+      if (parsed.activityLevel !== undefined) updateData.activityLevel = parsed.activityLevel;
+      if (parsed.scaleMac !== undefined) updateData.scaleMac = parsed.scaleMac;
+
+      const user = await storage.updateUser(userId, updateData as any);
+      if (!user) {
+        return res.status(404).json({ errors: [{ field: "unknown", message: "Usuário não encontrado." }] });
+      }
+      res.json(sanitizeProfile(user));
+    } catch (err) {
+      const { status, body } = handleZodFieldErrors(err);
+      res.status(status).json(body);
+    }
   });
 
   // ── Users ──

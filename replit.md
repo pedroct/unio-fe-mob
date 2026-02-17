@@ -45,8 +45,9 @@ Preferred communication style: Simple, everyday language.
   - `auth_sessions` table stores hashed refresh tokens with device info and expiry
   - **client/src/lib/api.ts** — `apiFetch()` auto-attaches Bearer token, handles 401 with single-queue refresh pattern
   - AuthProvider context in `client/src/lib/auth.tsx` boots via refresh cookie, stores access token in memory
+  - **Profile endpoints**: GET/PATCH `/api/auth/profile` — uses userId from token only (no ID in path), symmetric contract (same fields returned on GET and PATCH response). Dedicated `updateProfileSchema` Zod validator with field-level errors `{errors: [{field, message}]}`. Server normalizes `scaleMac` to uppercase before validation.
 - **Validation:** Zod schemas (generated from Drizzle schemas via `drizzle-zod`) for request validation
-- **Error Handling:** Centralized Zod error formatter using `zod-validation-error`
+- **Error Handling:** Centralized Zod error formatter using `zod-validation-error`; profile routes use field-level error format `{errors: [{field, message}]}`
 
 ### Data Storage
 - **Database:** PostgreSQL
@@ -54,7 +55,7 @@ Preferred communication style: Simple, everyday language.
 - **Schema Location:** `shared/schema.ts` — shared between client and server
 - **Migrations:** Drizzle Kit with `drizzle-kit push` for schema sync
 - **Tables:**
-  - `users` — User profiles (UUID primary keys, soft delete, audit fields for auth)
+  - `users` — User profiles (UUID primary keys, soft delete, audit fields for auth, scaleMac for BLE scale)
   - `auth_sessions` — JWT refresh token sessions (hashed tokens, device info, expiry)
   - `body_records` — Weight/body composition measurements
   - `foods` — Nutritional database (per-serving macro data)
