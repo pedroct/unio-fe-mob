@@ -1,0 +1,64 @@
+aqui estão os critérios de aceite prontos para colar no Replit.
+
+Tarefa 1 — Tabela de diário alimentar (meal_entries)
+
+Deve existir tabela com: id, id_usuario, id_alimento, tipo_refeicao, quantidade, unidade, data_consumo, criado_em, atualizado_em, deletado_em (se usar exclusão lógica).
+Deve existir índice por id_usuario + data_consumo.
+Migração deve ser reversível sem perda indevida de dados.
+Aceite: inserir e consultar entradas por usuário/data com desempenho estável.
+Tarefa 2 — Evolução de body_records
+
+Adicionar campos opcionais: gordura, músculo, água, osso, visceral, TMB.
+Campos antigos continuam funcionando sem quebra de contrato.
+Dados antigos permanecem legíveis após migração.
+Aceite: histórico de peso funciona mesmo com campos novos nulos.
+Tarefa 3 — API de diário alimentar (CRUD + resumo)
+
+Rotas privadas com autenticação obrigatória:
+criar entrada,
+listar por dia/período,
+atualizar entrada,
+excluir entrada.
+Endpoint de resumo diário deve retornar calorias e macros totalizados no servidor.
+Todas as consultas devem filtrar por id_usuario.
+Aceite: fluxo completo criar→listar→editar→excluir funcionando por usuário.
+Tarefa 4 — API de biometria real
+
+Listar histórico real por período (peso + composição disponível).
+Retornar estado atual (último registro e métricas principais).
+Rotas protegidas e isoladas por usuário.
+Aceite: tela de biometria sem dados fixos, usando somente API.
+Tarefa 5 — Refatoração da tela de Nutrição
+
+Remover MEALS e RECENT_FOODS fixos.
+Consumir resumo diário e lista de entradas reais.
+Atualização de tela após criação/edição/exclusão sem recarregar aplicação.
+Aceite: valores da interface batem com banco para o mesmo usuário/data.
+Tarefa 6 — Refatoração da tela nutrition/add
+
+Buscar alimentos reais no catálogo via API.
+Ao selecionar alimento, criar meal_entry real.
+Mostrar erros de validação de forma clara.
+Aceite: item adicionado aparece imediatamente no diário.
+Tarefa 7 — Refatoração da tela de Biometria
+
+Remover WEIGHT_HISTORY e METRICS fixos.
+Gráfico e cartões devem usar body_records reais.
+Tratar estado vazio sem falha visual.
+Aceite: novo registro aparece no histórico sem inconsistência.
+Tarefa 8 — Segurança e autorização
+
+Todas as rotas dessas funcionalidades exigem token válido.
+Sem token: 401; token inválido/expirado: erro padronizado.
+Usuário não acessa/edita dados de outro usuário.
+Aceite: testes de autorização passam em cenários positivos e negativos.
+Tarefa 9 — Testes de aceitação ponta a ponta
+
+Scripts cobrindo:
+autenticar,
+criar alimento/entrada,
+validar resumo diário,
+criar leitura biométrica,
+validar histórico biométrico.
+Testar também casos de erro (token ausente, dado inválido, recurso inexistente).
+Aceite: suíte final com 100% dos cenários críticos aprovados.
