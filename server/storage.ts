@@ -32,6 +32,7 @@ import {
   gruposAlimentares, tiposAlimento, nutrientes, alimentosTbca, alimentoNutrientes, lotesImportacao, logImportacaoAlimentos,
   type GrupoAlimentar, type TipoAlimento, type Nutriente, type AlimentoTbca, type AlimentoNutriente,
   type InsertAlimentoTbca, type InsertAlimentoNutriente,
+  pesagensPendentes, type PesagemPendente, type InsertPesagemPendente,
 } from "@shared/schema";
 
 const SYNC_TABLES = {
@@ -187,6 +188,14 @@ export interface IStorage {
   }>;
 
   checkIdempotency(key: string): Promise<boolean>;
+
+  // BLE Kitchen Scale
+  createPesagemPendente(data: InsertPesagemPendente): Promise<PesagemPendente>;
+  findDuplicatePesagem(userId: string, assinatura: string, windowSeconds: number): Promise<PesagemPendente | undefined>;
+  listPesagensPendentes(userId: string): Promise<PesagemPendente[]>;
+  getPesagem(id: string): Promise<PesagemPendente | undefined>;
+  associarPesagem(pesagemId: string, alimentoId: string, mealSlot: string, userId: string): Promise<{ pesagem: PesagemPendente; registro: MealEntry }>;
+  descartarPesagem(pesagemId: string, userId: string): Promise<PesagemPendente>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1051,6 +1060,138 @@ export class DatabaseStorage implements IStorage {
       .where(eq(syncLog.idempotencyKey, key))
       .limit(1);
     return !!existing;
+  }
+
+  // ── BLE Kitchen Scale ──
+
+  async createPesagemPendente(data: InsertPesagemPendente): Promise<PesagemPendente> {
+    const [pesagem] = await db.insert(pesagensPendentes).values(data).returning();
+    return pesagem;
+  }
+
+  async findDuplicatePesagem(userId: string, assinatura: string, windowSeconds: number): Promise<PesagemPendente | undefined> {
+    const cutoff = new Date(Date.now() - windowSeconds * 1000);
+    const [existing] = await db
+      .select()
+      .from(pesagensPendentes)
+      .where(
+        and(
+          eq(pesagensPendentes.userId, userId),
+          eq(pesagensPendentes.assinaturaDedup, assinatura),
+          gt(pesagensPendentes.createdAt, cutoff),
+        )
+      )
+      .orderBy(desc(pesagensPendentes.createdAt))
+      .limit(1);
+    return existing;
+  }
+
+  async listPesagensPendentes(userId: string): Promise<PesagemPendente[]> {
+    return db
+      .select()
+      .from(pesagensPendentes)
+      .where(
+        and(
+          eq(pesagensPendentes.userId, userId),
+          eq(pesagensPendentes.status, "PENDENTE"),
+        )
+      )
+      .orderBy(desc(pesagensPendentes.createdAt));
+  }
+
+  async getPesagem(id: string): Promise<PesagemPendente | undefined> {
+    const [pesagem] = await db
+      .select()
+      .from(pesagensPendentes)
+      .where(eq(pesagensPendentes.id, id));
+    return pesagem;
+  }
+
+  async associarPesagem(pesagemId: string, alimentoId: string, mealSlot: string, userId: string): Promise<{ pesagem: PesagemPendente; registro: MealEntry }> {
+    return await db.transaction(async (tx) => {
+      const [pesagem] = await tx
+        .select()
+        .from(pesagensPendentes)
+        .where(
+          and(
+            eq(pesagensPendentes.id, pesagemId),
+            eq(pesagensPendentes.userId, userId),
+          )
+        )
+        .for("update");
+
+      if (!pesagem) {
+        throw new Error("Pesagem não encontrada.");
+      }
+      if (pesagem.status !== "PENDENTE") {
+        throw new Error(`Pesagem não pode ser associada (status atual: ${pesagem.status}).`);
+      }
+
+      const [entry] = await tx.insert(mealEntries).values({
+        userId,
+        foodId: alimentoId,
+        mealSlot: mealSlot || "lanche",
+        quantityG: pesagem.pesoGramas,
+        unit: "g",
+      }).returning();
+
+      const now = new Date();
+      const [updated] = await tx
+        .update(pesagensPendentes)
+        .set({
+          status: "ASSOCIADA",
+          alimentoId,
+          registroAlimentarId: entry.id,
+          associadaEm: now,
+          updatedAt: now,
+        })
+        .where(eq(pesagensPendentes.id, pesagemId))
+        .returning();
+
+      console.log(`[BLE-AUDIT] Pesagem ${pesagemId} associada ao alimento ${alimentoId}, registro ${entry.id} por usuário ${userId}`);
+
+      return { pesagem: updated, registro: entry };
+    });
+  }
+
+  async descartarPesagem(pesagemId: string, userId: string): Promise<PesagemPendente> {
+    return await db.transaction(async (tx) => {
+      const [pesagem] = await tx
+        .select()
+        .from(pesagensPendentes)
+        .where(
+          and(
+            eq(pesagensPendentes.id, pesagemId),
+            eq(pesagensPendentes.userId, userId),
+          )
+        )
+        .for("update");
+
+      if (!pesagem) {
+        throw new Error("Pesagem não encontrada.");
+      }
+      if (pesagem.status === "ASSOCIADA") {
+        throw new Error("Pesagem já associada não pode ser descartada.");
+      }
+      if (pesagem.status === "DESCARTADA") {
+        throw new Error("Pesagem já foi descartada.");
+      }
+
+      const now = new Date();
+      const [updated] = await tx
+        .update(pesagensPendentes)
+        .set({
+          status: "DESCARTADA",
+          descartadaEm: now,
+          updatedAt: now,
+        })
+        .where(eq(pesagensPendentes.id, pesagemId))
+        .returning();
+
+      console.log(`[BLE-AUDIT] Pesagem ${pesagemId} descartada por usuário ${userId}`);
+
+      return updated;
+    });
   }
 
   // ── Helpers ──

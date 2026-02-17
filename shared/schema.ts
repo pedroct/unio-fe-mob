@@ -411,6 +411,48 @@ export const hydrationRecords = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// PESAGENS PENDENTES (pending kitchen scale weighings)
+// ---------------------------------------------------------------------------
+export const PESAGEM_STATUS = ["PENDENTE", "ASSOCIADA", "DESCARTADA"] as const;
+export const UNIDADES_BALANCA = ["g", "ml", "ml_milk", "oz", "lb_oz", "fl_oz", "fl_oz_milk"] as const;
+
+export const pesagensPendentes = pgTable(
+  "pesagens_pendentes",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    pesoOriginal: real("peso_original").notNull(),
+    unidadeOriginal: text("unidade_original").notNull().default("g"),
+    pesoGramas: real("peso_gramas").notNull(),
+    macBalanca: text("mac_balanca"),
+    pacoteHex: text("pacote_hex"),
+    assinaturaDedup: text("assinatura_dedup").notNull(),
+    status: text("status").notNull().default("PENDENTE"),
+    alimentoId: uuid("alimento_id").references(() => foods.id),
+    registroAlimentarId: uuid("registro_alimentar_id").references(() => mealEntries.id),
+    associadaEm: timestamp("associada_em", { withTimezone: true }),
+    descartadaEm: timestamp("descartada_em", { withTimezone: true }),
+    origem: text("origem").notNull().default("BLE"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("idx_pesagens_user_id").on(t.userId),
+    index("idx_pesagens_status").on(t.userId, t.status),
+    index("idx_pesagens_dedup").on(t.userId, t.assinaturaDedup, t.createdAt),
+  ]
+);
+
+export type PesagemPendente = typeof pesagensPendentes.$inferSelect;
+
+export const insertPesagemPendenteSchema = createInsertSchema(pesagensPendentes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPesagemPendente = z.infer<typeof insertPesagemPendenteSchema>;
+
+// ---------------------------------------------------------------------------
 // SYNC LOG GLOBAL (registro_sincronizacao_global)
 // ---------------------------------------------------------------------------
 export const syncLog = pgTable(
@@ -665,3 +707,33 @@ export type SyncPushRequest = z.infer<typeof syncPushRequestSchema>;
 export type PrepararParaConsumo = z.infer<typeof prepararParaConsumoSchema>;
 export type RegistrarAvancado = z.infer<typeof registrarAvancadoSchema>;
 export type CalcularNutricional = z.infer<typeof calcularNutricionalSchema>;
+
+// ---------------------------------------------------------------------------
+// BLE Kitchen Scale Schemas
+// ---------------------------------------------------------------------------
+export const ingestaoBalancaSchema = z.object({
+  peso: z.number().optional(),
+  unidade: z.string().optional(),
+  pacote_hex: z.string().optional(),
+  alimento_id: z.string().uuid().optional().nullable(),
+  alimento_tbca_id: z.string().uuid().optional().nullable(),
+  codigo_barras: z.string().optional().nullable(),
+  refeicao_id: z.string().optional().nullable(),
+  meal_slot: z.string().optional().nullable(),
+  mac_balanca: z.string().optional().nullable(),
+}).refine(
+  (data) => (data.peso !== undefined && data.unidade !== undefined) || data.pacote_hex !== undefined,
+  { message: "Informe peso+unidade ou pacote_hex.", path: ["peso"] }
+);
+
+export const associarPesagemSchema = z.object({
+  alimento_id: z.string().uuid().optional().nullable(),
+  alimento_tbca_id: z.string().uuid().optional().nullable(),
+  meal_slot: z.string().optional().nullable().default("lanche"),
+}).refine(
+  (data) => data.alimento_id || data.alimento_tbca_id,
+  { message: "Informe alimento_id ou alimento_tbca_id.", path: ["alimento_id"] }
+);
+
+export type IngestaoBalanca = z.infer<typeof ingestaoBalancaSchema>;
+export type AssociarPesagem = z.infer<typeof associarPesagemSchema>;

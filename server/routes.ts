@@ -22,7 +22,16 @@ import {
   prepararParaConsumoSchema,
   registrarAvancadoSchema,
   calcularNutricionalSchema,
+  ingestaoBalancaSchema,
+  associarPesagemSchema,
+  UNIDADES_BALANCA,
 } from "@shared/schema";
+import {
+  parseIcomonPacket,
+  convertToGrams,
+  validatePhysicalLimits,
+  buildDedupSignature,
+} from "./ble-parser";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import {
@@ -960,6 +969,249 @@ export async function registerRoutes(
       }
       const { status, body } = handleZodFieldErrors(err);
       res.status(status === 500 ? 500 : 422).json(body);
+    }
+  });
+
+  // ── BLE Balança de Cozinha ──
+
+  const bleRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    keyGenerator: (req) => {
+      const userId = getUserId(req);
+      return `ble:${userId}`;
+    },
+    handler: (_req, res) => {
+      res.status(429).json({ error: "Limite de requisições BLE excedido. Tente novamente em 1 minuto." });
+    },
+  });
+
+  app.post("/api/nutricao/diario/balanca-cozinha", requireAuth, bleRateLimit, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const parsed = ingestaoBalancaSchema.parse(req.body);
+
+      let pesoOriginal: number;
+      let unidadeOriginal: string;
+      let pesoGramas: number;
+      let pacoteHex = parsed.pacote_hex || null;
+
+      if (parsed.pacote_hex) {
+        const result = parseIcomonPacket(parsed.pacote_hex);
+        if ("error" in result) {
+          console.warn(`[BLE-AUDIT] Pacote HEX inválido de usuário ${userId}: ${result.message}`);
+          return res.status(400).json({ error: result.message });
+        }
+        pesoOriginal = result.pesoOriginal;
+        unidadeOriginal = result.unidadeOriginal;
+        pesoGramas = result.pesoGramas;
+      } else {
+        pesoOriginal = parsed.peso!;
+        unidadeOriginal = parsed.unidade!;
+        const conv = convertToGrams(parsed.peso!, parsed.unidade!);
+        pesoGramas = conv.pesoGramas;
+        if (!conv.unidadeReconhecida) {
+          console.warn(`[BLE-AUDIT] Unidade desconhecida "${parsed.unidade}" de usuário ${userId}. Fallback aplicado.`);
+        }
+      }
+
+      const limitError = validatePhysicalLimits(pesoGramas);
+      if (limitError) {
+        return res.status(400).json({ error: limitError });
+      }
+
+      const macBalanca = parsed.mac_balanca || null;
+      const assinatura = buildDedupSignature(userId, pesoGramas, unidadeOriginal, macBalanca);
+
+      const dup = await storage.findDuplicatePesagem(userId, assinatura, 5);
+      if (dup) {
+        console.log(`[BLE-AUDIT] Deduplicação: leitura duplicada ignorada para usuário ${userId}, assinatura ${assinatura}`);
+        return res.status(200).json({
+          sucesso: true,
+          duplicata: true,
+          pesagem_id: dup.id,
+          peso_original: dup.pesoOriginal,
+          unidade_original: dup.unidadeOriginal,
+          peso_gramas: dup.pesoGramas,
+          aguardando_alimento: dup.status === "PENDENTE" && !dup.alimentoId,
+          mensagem: "Leitura duplicada detectada na janela de 5 segundos.",
+        });
+      }
+
+      let alimentoId = parsed.alimento_id || null;
+      if (parsed.alimento_tbca_id && !alimentoId) {
+        try {
+          const food = await storage.prepararParaConsumo(parsed.alimento_tbca_id);
+          alimentoId = food.id;
+        } catch (err: any) {
+          if (err.message === "Alimento TBCA não encontrado.") {
+            return res.status(404).json({ error: err.message });
+          }
+        }
+      }
+
+      const pesagem = await storage.createPesagemPendente({
+        userId,
+        pesoOriginal,
+        unidadeOriginal,
+        pesoGramas,
+        macBalanca,
+        pacoteHex,
+        assinaturaDedup: assinatura,
+        status: "PENDENTE",
+        origem: "BLE",
+      });
+
+      console.log(`[BLE-AUDIT] Ingestão: pesagem ${pesagem.id} criada por usuário ${userId}, peso ${pesoGramas}g`);
+
+      if (alimentoId) {
+        const mealSlot = parsed.meal_slot || parsed.refeicao_id || "lanche";
+        const { pesagem: updated, registro } = await storage.associarPesagem(pesagem.id, alimentoId, mealSlot, userId);
+        const food = await storage.getFood(alimentoId);
+        const fator = pesoGramas / (food?.servingSizeG || 100);
+        const macros = food ? {
+          calorias: Math.round(food.caloriesKcal * fator * 100) / 100,
+          proteinas: Math.round(food.proteinG * fator * 100) / 100,
+          carboidratos: Math.round(food.carbsG * fator * 100) / 100,
+          gorduras: Math.round(food.fatG * fator * 100) / 100,
+        } : null;
+
+        return res.status(201).json({
+          sucesso: true,
+          registro_id: registro.id,
+          pesagem_id: updated.id,
+          peso_original: pesoOriginal,
+          unidade_original: unidadeOriginal,
+          peso_gramas: pesoGramas,
+          aguardando_alimento: false,
+          macros_calculados: macros,
+          mensagem: "Leitura registrada e associada ao alimento.",
+        });
+      }
+
+      res.status(201).json({
+        sucesso: true,
+        pesagem_id: pesagem.id,
+        peso_original: pesoOriginal,
+        unidade_original: unidadeOriginal,
+        peso_gramas: pesoGramas,
+        aguardando_alimento: true,
+        mensagem: "Leitura registrada. Aguardando associação com alimento.",
+      });
+    } catch (err) {
+      if (err instanceof ZodError) {
+        const { body } = handleZodFieldErrors(err);
+        return res.status(422).json(body);
+      }
+      console.error("[BLE] Erro na ingestão:", err);
+      res.status(500).json({ error: "Erro ao processar leitura da balança." });
+    }
+  });
+
+  app.get("/api/nutricao/diario/pesagens-pendentes", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const pendentes = await storage.listPesagensPendentes(userId);
+      res.json({
+        itens: pendentes.map((p) => ({
+          id: p.id,
+          peso_original: p.pesoOriginal,
+          unidade_original: p.unidadeOriginal,
+          peso_gramas: p.pesoGramas,
+          mac_balanca: p.macBalanca,
+          origem: p.origem,
+          criado_em: p.createdAt.toISOString(),
+        })),
+        total: pendentes.length,
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao listar pesagens pendentes." });
+    }
+  });
+
+  app.post("/api/nutricao/diario/pesagens-pendentes/:pesagem_id/associar", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const pesagemId = req.params.pesagem_id;
+      const parsed = associarPesagemSchema.parse(req.body);
+
+      let alimentoId = parsed.alimento_id || null;
+
+      if (parsed.alimento_tbca_id && !alimentoId) {
+        const food = await storage.prepararParaConsumo(parsed.alimento_tbca_id);
+        alimentoId = food.id;
+      }
+
+      if (!alimentoId) {
+        return res.status(422).json({ error: "Alimento não identificado." });
+      }
+
+      const food = await storage.getFood(alimentoId);
+      if (!food) {
+        return res.status(404).json({ error: "Alimento não encontrado." });
+      }
+
+      const mealSlot = parsed.meal_slot || "lanche";
+      const { pesagem, registro } = await storage.associarPesagem(pesagemId, alimentoId, mealSlot, userId);
+
+      const fator = pesagem.pesoGramas / (food.servingSizeG || 100);
+      const macros = {
+        calorias: Math.round(food.caloriesKcal * fator * 100) / 100,
+        proteinas: Math.round(food.proteinG * fator * 100) / 100,
+        carboidratos: Math.round(food.carbsG * fator * 100) / 100,
+        gorduras: Math.round(food.fatG * fator * 100) / 100,
+      };
+
+      res.json({
+        sucesso: true,
+        pesagem_id: pesagem.id,
+        registro_id: registro.id,
+        peso_gramas: pesagem.pesoGramas,
+        alimento: food.name,
+        macros_calculados: macros,
+        mensagem: "Pesagem associada com sucesso.",
+      });
+    } catch (err: any) {
+      if (err.message === "Pesagem não encontrada.") {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err.message?.includes("não pode ser associada") || err.message?.includes("já associada")) {
+        return res.status(400).json({ error: err.message });
+      }
+      if (err.message === "Alimento TBCA não encontrado.") {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err instanceof ZodError) {
+        const { body } = handleZodFieldErrors(err);
+        return res.status(422).json(body);
+      }
+      console.error("[BLE] Erro na associação:", err);
+      res.status(500).json({ error: "Erro ao associar pesagem." });
+    }
+  });
+
+  app.delete("/api/nutricao/diario/pesagens-pendentes/:pesagem_id", requireAuth, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const pesagemId = req.params.pesagem_id;
+
+      const updated = await storage.descartarPesagem(pesagemId, userId);
+
+      res.json({
+        sucesso: true,
+        pesagem_id: updated.id,
+        status: updated.status,
+        mensagem: "Pesagem descartada com sucesso.",
+      });
+    } catch (err: any) {
+      if (err.message === "Pesagem não encontrada.") {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err.message?.includes("já associada") || err.message?.includes("já foi descartada")) {
+        return res.status(400).json({ error: err.message });
+      }
+      console.error("[BLE] Erro no descarte:", err);
+      res.status(500).json({ error: "Erro ao descartar pesagem." });
     }
   });
 
