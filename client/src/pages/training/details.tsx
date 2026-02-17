@@ -134,7 +134,7 @@ export default function TrainingDetailsScreen() {
         </main>
 
         {/* Start Workout FAB */}
-        <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#FAFBF8] via-[#FAFBF8] to-transparent z-20">
+        <div className="fixed bottom-[84px] left-0 right-0 p-6 bg-gradient-to-t from-[#FAFBF8] via-[#FAFBF8] to-transparent z-40 max-w-[430px] mx-auto">
           <button 
             onClick={() => setLocation("/training/player")}
             className="w-full bg-[#2F5641] text-white py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-[#2F5641]/25 flex items-center justify-center gap-3 active:scale-[0.98] transition-transform"
