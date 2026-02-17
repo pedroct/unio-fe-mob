@@ -23,12 +23,12 @@ export default function SplashScreen({ onComplete }: { onComplete?: () => void }
   }, [onComplete]);
 
   return (
+    <div className="min-h-screen bg-[#2F5641] flex items-center justify-center">
     <div 
-      className="relative w-full h-[100vh] overflow-hidden flex flex-col items-center justify-center font-sans"
+      className="relative w-full max-w-[430px] h-[100vh] overflow-hidden flex flex-col items-center justify-center font-sans mx-auto"
       aria-label="UNIO - Carregando"
       role="status"
     >
-      {/* Background with Radial Gradient */}
       <div 
         className="absolute inset-0 z-0 transition-opacity duration-1000"
         style={{
@@ -175,6 +175,7 @@ export default function SplashScreen({ onComplete }: { onComplete?: () => void }
           50% { transform: scale(1.02); }
         }
       `}</style>
+    </div>
     </div>
   );
 }
