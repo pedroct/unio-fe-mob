@@ -96,7 +96,7 @@ export default function TrainingPlayerScreen() {
   };
 
   return (
-    <div className="bg-[#FAFBF8] min-h-screen flex flex-col relative overflow-hidden">
+    <div className="bg-[#FAFBF8] min-h-screen flex flex-col relative overflow-hidden max-w-[430px] mx-auto">
       {/* Top Bar */}
       <header className="px-6 pt-14 pb-4 flex items-center justify-between bg-white z-10 border-b border-[#E8EBE5]">
         <button 
