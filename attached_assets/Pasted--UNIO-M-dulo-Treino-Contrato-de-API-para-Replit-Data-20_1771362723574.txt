@@ -1,0 +1,346 @@
+# UNIO - Módulo Treino (Contrato de API para Replit)
+
+Data: 2026-02-17  
+Base: `https://staging.unio.tec.br`
+
+## Visão geral (MVP enxuto)
+O módulo **Treino** fornece:
+- Catálogo de exercícios (globais + personalizados do usuário)
+- Planos de treino do usuário (com itens: exercício, séries, repetições, etc.)
+- Sessões de treino (registro de execução com data/hora e status)
+
+## Autenticação
+Todos os endpoints abaixo exigem JWT Bearer.
+- Header: `Authorization: Bearer <access_token>`
+- Token via: `POST /api/auth/pair`
+
+## Padrão de erros do módulo
+Validações e erros de domínio retornam `422` no formato:
+```json
+{
+  "errors": [
+    {"field": "nome", "message": "..."}
+  ]
+}
+```
+Erros de permissão/isolamento retornam `403` no mesmo formato, e não-encontrado retorna `404` no mesmo formato.
+
+---
+
+# Endpoints
+
+## Exercícios
+
+### `GET /api/treino/exercicios`
+Lista exercícios globais (do sistema) e personalizados do usuário.
+
+**Response 200**
+```json
+{
+  "itens": [
+    {
+      "id": 10,
+      "nome": "Supino reto",
+      "grupo_muscular": "Peito",
+      "observacoes": "",
+      "personalizado": true,
+      "criado_em": "2026-02-17T21:10:00.000Z"
+    }
+  ],
+  "total_itens": 1
+}
+```
+
+### `POST /api/treino/exercicios`
+Cria exercício **personalizado** (do usuário autenticado).
+
+**Body**
+```json
+{
+  "nome": "Supino reto",
+  "grupo_muscular": "Peito",
+  "observacoes": "Opcional"
+}
+```
+
+**Response 201**
+```json
+{
+  "id": 10,
+  "nome": "Supino reto",
+  "grupo_muscular": "Peito",
+  "observacoes": "Opcional",
+  "personalizado": true,
+  "criado_em": "2026-02-17T21:10:00.000Z",
+  "mensagem": "Exercício criado com sucesso."
+}
+```
+
+**Response 422 (exemplo)**
+```json
+{
+  "errors": [
+    {"field": "nome", "message": "Nome do exercício deve ter pelo menos 2 caracteres."}
+  ]
+}
+```
+
+---
+
+## Planos
+
+### `POST /api/treino/planos`
+Cria um plano de treino do usuário.
+
+**Body**
+```json
+{
+  "nome": "Treino A",
+  "objetivo": "Força"
+}
+```
+
+**Response 201**
+```json
+{
+  "id": 1,
+  "nome": "Treino A",
+  "objetivo": "Força",
+  "ativo": true,
+  "atualizado_em": "2026-02-17T21:10:00.000Z",
+  "itens": [],
+  "mensagem": "Plano criado com sucesso."
+}
+```
+
+### `GET /api/treino/planos`
+Lista os planos do usuário.
+
+**Response 200**
+```json
+{
+  "itens": [
+    {
+      "id": 1,
+      "nome": "Treino A",
+      "objetivo": "Força",
+      "ativo": true,
+      "atualizado_em": "2026-02-17T21:10:00.000Z"
+    }
+  ],
+  "total_itens": 1
+}
+```
+
+### `GET /api/treino/planos/{plano_id}`
+Detalha um plano (inclui itens).
+
+**Response 200**
+```json
+{
+  "id": 1,
+  "nome": "Treino A",
+  "objetivo": "Força",
+  "ativo": true,
+  "atualizado_em": "2026-02-17T21:10:00.000Z",
+  "itens": [
+    {
+      "id": 100,
+      "plano_id": 1,
+      "exercicio_id": 10,
+      "exercicio_nome": "Supino reto",
+      "ordem": 1,
+      "series": 5,
+      "repeticoes": 5,
+      "descanso_segundos": 90,
+      "carga_kg": "60.00",
+      "observacoes": ""
+    }
+  ]
+}
+```
+
+### `PATCH /api/treino/planos/{plano_id}`
+Atualiza campos do plano.
+
+**Body (parcial)**
+```json
+{
+  "nome": "Treino A (atualizado)",
+  "ativo": true
+}
+```
+
+**Response 200**
+Mesma estrutura do detalhe do plano.
+
+### `DELETE /api/treino/planos/{plano_id}`
+Remove o plano.
+
+**Response 200**
+```json
+{
+  "id": 1,
+  "removido": true,
+  "mensagem": "Plano removido com sucesso."
+}
+```
+
+---
+
+## Itens do plano
+
+### `POST /api/treino/planos/{plano_id}/itens`
+Adiciona item no plano.
+
+**Body**
+```json
+{
+  "exercicio_id": 10,
+  "ordem": 1,
+  "series": 5,
+  "repeticoes": 5,
+  "descanso_segundos": 90,
+  "carga_kg": "60.00",
+  "observacoes": ""
+}
+```
+
+**Response 201**
+```json
+{
+  "id": 100,
+  "plano_id": 1,
+  "exercicio_id": 10,
+  "exercicio_nome": "Supino reto",
+  "ordem": 1,
+  "series": 5,
+  "repeticoes": 5,
+  "descanso_segundos": 90,
+  "carga_kg": "60.00",
+  "observacoes": "",
+  "mensagem": "Item adicionado ao plano com sucesso."
+}
+```
+
+### `PATCH /api/treino/itens/{item_id}`
+Atualiza item do plano.
+
+**Body (parcial)**
+```json
+{
+  "carga_kg": "62.50",
+  "descanso_segundos": 120
+}
+```
+
+**Response 200**
+Mesma estrutura do item (com `mensagem`).
+
+### `DELETE /api/treino/itens/{item_id}`
+Remove o item.
+
+**Response 200**
+```json
+{
+  "id": 100,
+  "removido": true,
+  "mensagem": "Item removido com sucesso."
+}
+```
+
+---
+
+## Sessões
+
+### `POST /api/treino/sessoes`
+Cria sessão de treino (com ou sem plano).
+
+**Body**
+```json
+{
+  "plano_id": 1,
+  "iniciado_em": "2026-02-17T21:10:00.000Z",
+  "concluida": false,
+  "observacoes": "Opcional"
+}
+```
+
+**Response 201**
+```json
+{
+  "id": 500,
+  "plano_id": 1,
+  "plano_nome": "Treino A",
+  "iniciado_em": "2026-02-17T21:10:00.000Z",
+  "finalizado_em": null,
+  "duracao_min": null,
+  "concluida": false,
+  "observacoes": "Opcional",
+  "mensagem": "Sessão criada com sucesso."
+}
+```
+
+### `GET /api/treino/sessoes?inicio=YYYY-MM-DD&fim=YYYY-MM-DD`
+Lista sessões por período; sem parâmetros retorna apenas o dia atual.
+
+**Response 200**
+```json
+{
+  "inicio": "2026-02-17",
+  "fim": "2026-02-17",
+  "itens": [
+    {
+      "id": 500,
+      "plano_id": 1,
+      "plano_nome": "Treino A",
+      "iniciado_em": "2026-02-17T21:10:00.000Z",
+      "finalizado_em": null,
+      "duracao_min": null,
+      "concluida": false,
+      "observacoes": ""
+    }
+  ],
+  "total_itens": 1
+}
+```
+
+### `GET /api/treino/sessoes/{sessao_id}`
+Detalha uma sessão.
+
+**Response 200**
+Mesma estrutura do `POST /sessoes` (com `mensagem`).
+
+### `PATCH /api/treino/sessoes/{sessao_id}`
+Atualiza sessão (ex.: concluir, duração, observações).
+
+**Body (parcial)**
+```json
+{
+  "concluida": true,
+  "duracao_min": 45,
+  "finalizado_em": "2026-02-17T21:55:00.000Z"
+}
+```
+
+**Response 200**
+Mesma estrutura do `POST /sessoes` (com `mensagem`).
+
+### `DELETE /api/treino/sessoes/{sessao_id}`
+Remove sessão.
+
+**Response 200**
+```json
+{
+  "id": 500,
+  "removido": true,
+  "mensagem": "Sessão removida com sucesso."
+}
+```
+
+---
+
+## Critérios de aceite (MVP)
+- Todos os endpoints exigem autenticação e respeitam isolamento por usuário.
+- Validações de domínio retornam `422` com `errors[]` no padrão acima.
+- CRUD mínimo funciona para: exercícios personalizados, planos (com itens) e sessões.

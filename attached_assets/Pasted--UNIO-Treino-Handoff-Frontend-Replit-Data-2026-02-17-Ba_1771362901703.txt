@@ -1,0 +1,208 @@
+# UNIO - Treino (Handoff Frontend Replit)
+
+Data: 2026-02-17  
+Base API (staging): https://staging.unio.tec.br
+
+Este documento complementa o contrato de API do módulo Treino e foca em integração de frontend (Replit) no padrão do projeto: `apiFetch`, React Query, cache otimista, tratamento de erros `422/403/404`, PT-BR.
+
+## Pré-requisitos
+- Autenticação JWT via `POST /api/auth/pair`
+- Header em todas as rotas de Treino:
+  - `Authorization: Bearer <access_token>`
+
+## Padrão de erro (UI)
+O backend retorna erros do módulo no formato:
+
+```json
+{
+  "errors": [
+    {"field": "nome", "message": "..."}
+  ]
+}
+```
+
+Regras práticas:
+- `422`: exibir erros por campo no formulário (map `field -> message`).
+- `403`: toast “Acesso negado” e fallback (voltar para lista anterior).
+- `404`: UI “Não encontrado” e CTA “Voltar”.
+
+## Tipos importantes
+- IDs são inteiros.
+- Datas:
+  - `inicio`/`fim` (query): `YYYY-MM-DD`.
+  - `iniciado_em`/`finalizado_em`/`criado_em`/`atualizado_em`: ISO datetime.
+- `carga_kg` é decimal e trafega como **string** (ex.: `"60.00"`).
+
+## Cloudflare (se ocorrer bloqueio)
+Se aparecer `error code 1010`, envie `User-Agent` “browser-like” no `apiFetch`.
+
+---
+
+# Rotas (Wouter) sugeridas
+
+Rotas internas (mobile-first):
+- `/treino/planos` → Lista de Planos
+- `/treino/planos/novo` → Criar Plano
+- `/treino/planos/:planoId` → Detalhe do Plano (itens)
+- `/treino/exercicios` → Catálogo de Exercícios
+- `/treino/exercicios/novo` → Criar Exercício
+- `/treino/sessoes` → Histórico de Sessões
+- `/treino/sessoes/nova` → Iniciar Sessão (plano opcional)
+- `/treino/sessoes/:sessaoId` → Detalhe/edição da Sessão
+
+---
+
+# React Query
+
+## Query Keys (padrão)
+- Exercícios: `["treino", "exercicios"]`
+- Planos: `["treino", "planos"]`
+- Plano detalhe: `["treino", "plano", planoId]`
+- Sessões (lista): `["treino", "sessoes", inicio, fim]`
+- Sessão detalhe: `["treino", "sessao", sessaoId]`
+
+## Invalidação sugerida
+- `POST /api/treino/exercicios` → invalidar `["treino","exercicios"]`
+- `POST /api/treino/planos` → invalidar `["treino","planos"]`
+- `PATCH/DELETE /api/treino/planos/:planoId` → invalidar `["treino","planos"]` e `["treino","plano",planoId]`
+- Itens do plano (add/patch/delete) → invalidar `["treino","plano",planoId]` (e opcionalmente `["treino","planos"]` pra refletir `atualizado_em`)
+- Sessões (create/patch/delete) → invalidar a lista do período atual e o detalhe se aplicável
+
+---
+
+# Payloads mínimos (forms)
+
+## Exercícios
+
+### Criar exercício
+`POST /api/treino/exercicios`
+
+Body mínimo:
+```json
+{ "nome": "Supino reto" }
+```
+
+Opcional:
+```json
+{
+  "nome": "Supino reto",
+  "grupo_muscular": "Peito",
+  "observacoes": "Opcional"
+}
+```
+
+Erros comuns:
+- `422` com `field="nome"`
+
+---
+
+## Planos
+
+### Criar plano
+`POST /api/treino/planos`
+
+Body mínimo:
+```json
+{ "nome": "Treino A" }
+```
+
+Opcional:
+```json
+{ "nome": "Treino A", "objetivo": "Força" }
+```
+
+### Atualizar plano
+`PATCH /api/treino/planos/:planoId`
+
+Body parcial (envie só o que mudou):
+```json
+{ "ativo": true }
+```
+
+Erros comuns:
+- `422` com `field="nome"` (nome curto)
+- `403/404` com `field="plano_id"`
+
+---
+
+## Itens do plano
+
+### Adicionar item
+`POST /api/treino/planos/:planoId/itens`
+
+Body mínimo:
+```json
+{ "exercicio_id": 10 }
+```
+
+Body comum:
+```json
+{
+  "exercicio_id": 10,
+  "ordem": 1,
+  "series": 5,
+  "repeticoes": 5,
+  "descanso_segundos": 90,
+  "carga_kg": "60.00",
+  "observacoes": ""
+}
+```
+
+### Editar item
+`PATCH /api/treino/itens/:itemId`
+
+Body parcial:
+```json
+{ "carga_kg": "62.50", "descanso_segundos": 120 }
+```
+
+Erros comuns:
+- `422` por faixas/valores (ex.: `series`, `repeticoes`, `descanso_segundos`, `carga_kg`)
+- `403/404` com `field="item_id"`
+
+---
+
+## Sessões
+
+### Iniciar/criar sessão
+`POST /api/treino/sessoes`
+
+Body mínimo (se quiser manter explícito):
+```json
+{ "concluida": false }
+```
+
+Com plano e timestamps:
+```json
+{
+  "plano_id": 1,
+  "iniciado_em": "2026-02-17T21:10:00.000Z",
+  "concluida": false,
+  "observacoes": ""
+}
+```
+
+### Concluir sessão
+`PATCH /api/treino/sessoes/:sessaoId`
+
+```json
+{
+  "concluida": true,
+  "duracao_min": 45,
+  "finalizado_em": "2026-02-17T21:55:00.000Z"
+}
+```
+
+### Listar histórico
+`GET /api/treino/sessoes?inicio=YYYY-MM-DD&fim=YYYY-MM-DD`
+
+Observações:
+- Sem parâmetros → backend retorna apenas o dia atual.
+- Se `inicio > fim` → `422` com `field="periodo"`.
+
+---
+
+# Sugestão de UX (mobile-first)
+- Design 430px: usar cards e listas simples.
+- Form errors: mostrar abaixo do input usando `errors[].field`.
+- Sessão: timer no cliente; backend só registra timestamps e status.
