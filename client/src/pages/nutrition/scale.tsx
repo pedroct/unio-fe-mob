@@ -64,6 +64,27 @@ function smartTruncate(text: string, maxLen: number = 48): string {
   return trimmed.slice(0, lastSpace) + "\u2026";
 }
 
+function safeTruncateForCard(text: string, maxLen: number = 90): string {
+  if (text.length <= maxLen) {
+    const openCount = (text.match(/\(/g) || []).length;
+    const closeCount = (text.match(/\)/g) || []).length;
+    if (openCount <= closeCount) return text;
+    const lastOpen = text.lastIndexOf("(");
+    const before = text.slice(0, lastOpen).replace(/[,\s]+$/, "");
+    return before + "\u2026";
+  }
+  let result = text.slice(0, maxLen);
+  const lastSpace = result.lastIndexOf(" ");
+  if (lastSpace > 0) result = result.slice(0, lastSpace);
+  const openCount = (result.match(/\(/g) || []).length;
+  const closeCount = (result.match(/\)/g) || []).length;
+  if (openCount > closeCount) {
+    const lastOpen = result.lastIndexOf("(");
+    result = result.slice(0, lastOpen).replace(/[,\s]+$/, "");
+  }
+  return result + "\u2026";
+}
+
 export default function NutritionScaleScreen() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -252,7 +273,6 @@ export default function NutritionScaleScreen() {
     setWeight(isNaN(num) ? 0 : num);
   };
 
-  const foodLabelTruncated = selectedFood ? smartTruncate(getFoodLabel(selectedFood)) : "";
 
   useEffect(() => {
     if (searchOpen) {
@@ -387,7 +407,6 @@ export default function NutritionScaleScreen() {
                 </button>
 
                 <div className="flex-1 flex flex-col items-center justify-center opacity-40">
-                  <Search size={32} className="mb-2 text-[#8B9286]" />
                   <p className="text-xs text-[#8B9286]">Selecione um alimento para registrar</p>
                 </div>
               </div>
@@ -399,7 +418,7 @@ export default function NutritionScaleScreen() {
                       Alimento selecionado
                     </span>
                     <h3 data-testid="text-selected-food" className="font-semibold text-[#2F5641] text-lg leading-tight">
-                      {smartTruncate(getFoodLabel(selectedFood))}
+                      {safeTruncateForCard(getFoodLabel(selectedFood))}
                     </h3>
                     {getFoodSubtitle(selectedFood) && (
                       <p className="text-xs text-[#8B9286]">{getFoodSubtitle(selectedFood)}</p>
@@ -436,7 +455,7 @@ export default function NutritionScaleScreen() {
                 )}
 
                 <div className="pt-2 pb-4">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] block mb-2">
+                  <label className="text-xs font-medium tracking-wide text-[#8B9286] block mb-2">
                     Quantidade (g)
                   </label>
                   <input
@@ -459,9 +478,9 @@ export default function NutritionScaleScreen() {
                   {confirmMutation.isPending ? (
                     <><Loader2 size={20} className="animate-spin" /> Registrando…</>
                   ) : weight === 0 ? (
-                    <>Coloque o alimento na balança</>
+                    <>Aguardando peso…</>
                   ) : (
-                    <><Check size={20} /> Registrar {foodLabelTruncated}</>
+                    <><Check size={20} /> Registrar {smartTruncate(getFoodLabel(selectedFood!), 32)}</>
                   )}
                 </button>
               </div>

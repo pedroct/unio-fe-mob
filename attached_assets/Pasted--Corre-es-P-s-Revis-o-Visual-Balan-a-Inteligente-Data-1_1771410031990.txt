@@ -1,0 +1,133 @@
+# Correções Pós-Revisão Visual — Balança Inteligente
+
+**Data:** 18/02/2026
+**Módulo:** Nutrição → Balança Inteligente
+**Origem:** Análise das telas atualizadas após primeira rodada de correções
+
+---
+
+## Responsabilidades por destinatário
+
+| Correção | Frontend | Backend |
+|---|:---:|:---:|
+| Relevância dos resultados de busca | | ✅ |
+| Redundância instrução + botão | ✅ | |
+| Label "QUANTIDADE (G)" em ALL CAPS | ✅ | |
+| Nome truncado com parêntese aberto | ✅ | |
+| Ícone de lupa no estado vazio | ✅ | |
+
+---
+
+## FRONTEND
+
+### Correção F1 — Redundância entre instrução e botão desabilitado
+
+**Problema:** quando o alimento está selecionado e o peso é 0g, duas mensagens idênticas aparecem simultaneamente:
+
+- Instrução acima do botão TARAR: `"Coloque o alimento na balança para registrar"`
+- Copy do botão desabilitado: `"Coloque o alimento na balança"`
+
+Isso cria redundância visual — o usuário lê a mesma orientação duas vezes em sequência.
+
+**Solução:** manter a instrução próxima à balança (onde a ação ocorre fisicamente) e alterar o copy do botão para comunicar estado, não ação.
+
+**Copy atual do botão (desabilitado):**
+```
+Coloque o alimento na balança
+```
+
+**Copy corrigido do botão (desabilitado):**
+```
+Aguardando peso...
+```
+
+**Copy do botão (habilitado, peso > 0g):**
+```
+Registrar [nome do alimento]
+```
+Exemplo: `Registrar Carne, peito de frango`
+Se o nome for longo, truncar com `…` após 32 caracteres no botão.
+
+**Instrução acima do botão TARAR** — manter como está:
+```
+Coloque o alimento na balança para registrar
+```
+
+---
+
+### Correção F2 — Label "QUANTIDADE (G)" em ALL CAPS
+
+**Problema:** o label do campo de entrada manual de quantidade está em caixa alta, inconsistente com o padrão de sentence case adotado no restante do app.
+
+**Label atual:**
+```
+QUANTIDADE (G)
+```
+
+**Label corrigido:**
+```
+Quantidade (g)
+```
+
+**Regra:** labels de campos de formulário seguem sentence case. A unidade entre parênteses permanece em minúsculo — `(g)` e não `(G)`.
+
+---
+
+### Correção F3 — Nome do alimento truncado com parêntese aberto
+
+**Problema:** no card de confirmação do alimento selecionado, o nome está sendo truncado em posição que deixa parênteses abertos sem fechamento.
+
+Exemplo atual:
+```
+Carne, peito de frango, c/ molho branco (molho...
+```
+
+O parêntese aberto e não fechado é visualmente perturbador e prejudica a leitura.
+
+**Solução — duas linhas no card de confirmação:**
+
+No card de alimento selecionado (não na lista de busca), permitir até **2 linhas** de nome antes de truncar. Isso reduz drasticamente os casos de truncamento e dá ao usuário mais contexto sobre o alimento que selecionou antes de confirmar.
+
+**Comportamento esperado:**
+```
+Carne, peito de frango, c/ molho branco
+(molho à base de leite desnatado)...
+```
+
+Se mesmo com 2 linhas o nome for longo, truncar na **última palavra completa antes do limite**, nunca no meio de um trecho entre parênteses.
+
+**Regra de truncamento seguro:**
+1. Remover o conteúdo entre parênteses se ele ultrapassar a segunda linha — parênteses são geralmente detalhes opcionais de preparação
+2. Adicionar `…` apenas após palavra completa
+3. Nunca truncar deixando `(` sem `)` correspondente
+
+**Exemplo de resultado limpo:**
+```
+Carne, peito de frango, c/ molho branco…
+```
+
+**Na lista de busca** (não no card), manter o comportamento atual de 1 linha com truncamento — o espaço é menor e o usuário ainda não confirmou o item.
+
+---
+
+### Correção F4 — Ícone de lupa no estado vazio inicial
+
+**Problema:** quando nenhum alimento foi selecionado e o campo de busca está vazio, a tela exibe um ícone de lupa com o texto:
+```
+Selecione um alimento para registrar
+```
+
+O ícone de lupa é semanticamente incorreto neste contexto — ele representa "busca", mas o estado comunica "aguardando seleção". A lupa sugere que o usuário deve buscar algo, quando na verdade o campo de busca acima já cumpre esse papel.
+
+**Solução:** substituir o ícone de lupa por um ícone neutro de alimentação/prato, ou remover o ícone completamente e manter apenas o texto.
+
+**Opção A — Sem ícone (recomendada):**
+```
+Selecione um alimento para registrar
+```
+Texto centralizado, cor `--color-text-tertiary`, sem ícone.
+
+**Opção B — Ícone de prato ou garfo:**
+Usar ícone da biblioteca existente no projeto que represente alimentação — não busca.
+
+---
