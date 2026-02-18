@@ -322,7 +322,7 @@ export default function TrainingScreen() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[55]"
                 onClick={() => setShowCreateModal(false)}
               />
               <motion.div
@@ -330,9 +330,9 @@ export default function TrainingScreen() {
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 max-w-[430px] mx-auto shadow-2xl"
+                className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-[60] max-w-[430px] mx-auto shadow-2xl flex flex-col max-h-[85vh]"
               >
-                <div className="px-6 pt-6 pb-2 flex items-center justify-between">
+                <div className="px-6 pt-6 pb-2 flex items-center justify-between shrink-0">
                   <h2 className="text-lg font-bold text-[#2F5641]">Criar Plano</h2>
                   <button
                     data-testid="button-close-create"
@@ -343,7 +343,7 @@ export default function TrainingScreen() {
                   </button>
                 </div>
 
-                <div className="px-6 pb-8 pt-2 space-y-4">
+                <div className="px-6 pt-2 space-y-4 overflow-y-auto flex-1">
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">
                       Nome do plano *
@@ -377,7 +377,9 @@ export default function TrainingScreen() {
                       <p className="text-xs text-[#D97952] mt-1" data-testid="error-plan-objetivo">{fieldErrors.objetivo}</p>
                     )}
                   </div>
+                </div>
 
+                <div className="px-6 pt-4 pb-8 shrink-0">
                   <button
                     data-testid="button-submit-plan"
                     onClick={handleCreateSubmit}
