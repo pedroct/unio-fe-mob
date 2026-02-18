@@ -1,0 +1,221 @@
+# Handoff Replit — UX/UI/Copy: Tela Balança Inteligente
+
+**Data:** 18/02/2026
+**Módulo:** Nutrição → Balança Inteligente
+**Responsável:** Replit (frontend)
+**Origem:** Análise comparativa UI com MyFitnessPal e Nutridays
+
+---
+
+## Contexto
+
+A tela Balança Inteligente possui três estados principais:
+1. **Aguardando alimento** — balança conectada, peso zerado, campo de busca disponível
+2. **Busca ativa** — usuário digitou um termo, lista de resultados expandida
+3. **Alimento selecionado** — item escolhido, aguardando peso para confirmar
+
+Este documento cobre correções de UX, copy e comportamento visual nos três estados.
+Nenhuma das correções abaixo exige mudança de endpoint ou lógica de backend.
+
+---
+
+## Correção 1 — Painel de busca: converter para bottom sheet fullscreen
+
+**Problema:** quando o usuário digita no campo de busca, os resultados aparecem dentro de um container com scroll lateral visível (scrollbar na lateral direita). Isso indica que a lista está dentro de um elemento com `overflow: scroll` e altura fixa, em vez de ocupar a tela inteira.
+
+**Solução:** ao ativar o campo de busca, o painel de resultados deve expandir como um **bottom sheet** que ocupa toda a tela (exceto a status bar), com scroll interno suave e sem scrollbar visível.
+
+**Comportamento esperado:**
+- Campo de busca fica fixo no topo do bottom sheet
+- Lista de resultados ocupa o restante da altura disponível com `overflow-y: auto` e scrollbar oculta (`scrollbar-width: none`)
+- Bottom sheet fecha ao tocar no `×` ou pressionar voltar
+- A balança (display de gramas) fica oculta enquanto o bottom sheet está aberto — não precisa estar visível durante a busca
+
+**Referência de comportamento:** igual ao painel de busca do MyFitnessPal no estado "Today → Log food".
+
+---
+
+## Correção 2 — Truncamento inteligente de nomes de alimentos
+
+**Problema atual:** nomes longos são truncados por número de caracteres em posição aleatória.
+
+Exemplo atual:
+> "Berinjela recheada, c/ peito de fra..."
+
+**Solução:** truncar sempre na última palavra completa antes do limite, preservando o sentido.
+
+Exemplo corrigido:
+> "Berinjela recheada, c/ peito de frango..."
+
+**Regra de implementação:**
+- Limite de exibição: **48 caracteres** para o título do item na lista
+- Truncar na última palavra completa antes do limite
+- Adicionar `…` (ellipsis real, não três pontos) ao final
+- Não truncar o subtítulo (grupo alimentar) — ele já é curto o suficiente
+
+---
+
+## Correção 3 — Label "ALIMENTO SELECIONADO (TBCA)"
+
+**Problema:** o label acima do nome do alimento selecionado expõe dado técnico de sistema ao usuário final. O usuário não precisa saber de qual base interna o alimento veio neste momento do fluxo.
+
+**Copy atual:**
+```
+ALIMENTO SELECIONADO (TBCA)
+```
+
+**Copy corrigido:**
+```
+Alimento selecionado
+```
+
+**Regras:**
+- Sentence case (não ALL CAPS)
+- Remover "(TBCA)" do label — essa informação pode aparecer como badge discreto próximo ao nome do alimento se o produto decidir mantê-la, mas não no label principal
+- Se mantiver o badge TBCA, usar o mesmo estilo já aplicado na lista de resultados (texto pequeno, cor terracota/âmbar)
+
+---
+
+## Correção 4 — Mensagem técnica do sistema exposta ao usuário
+
+**Problema:** após selecionar um alimento da base TBCA, aparece a seguinte mensagem em destaque:
+
+> "Alimento da base TBCA — os macros serão calculados pelo servidor ao registrar."
+
+Essa mensagem expõe arquitetura interna ("servidor", "calculados pelo servidor") e gera insegurança ("serão calculados" — e se falhar?). Ela não ajuda o usuário a completar a tarefa.
+
+**Solução:** remover essa mensagem completamente.
+
+O usuário não precisa de nenhum texto explicativo neste estado. O feedback sobre o cálculo nutricional deve ocorrer **após** a confirmação do registro, no estado de sucesso.
+
+**Se houver necessidade de comunicar limitação** (ex: macros não disponíveis para pré-visualização), usar linguagem orientada ao usuário:
+
+```
+Os valores nutricionais serão exibidos após o registro.
+```
+
+Mas somente se essa limitação for real e perceptível. Se o backend calcular e retornar corretamente, não exibir nada — silêncio é a melhor UX quando tudo funciona.
+
+---
+
+## Correção 5 — Botão desabilitado sem instrução
+
+**Problema:** quando o alimento está selecionado mas o peso na balança é 0g, o botão exibe:
+
+> "Informe o peso para confirmar"
+
+O botão está desabilitado (aparência acinzentada), mas **nenhum elemento da tela instrui o usuário sobre o que fazer** para habilitá-lo. O usuário precisa colocar o alimento na balança física, mas a UI não comunica isso.
+
+**Solução:** adicionar uma instrução contextual abaixo do display da balança quando o peso é 0g e um alimento já foi selecionado.
+
+**Copy da instrução:**
+```
+Coloque o alimento na balança para registrar
+```
+
+**Especificações visuais:**
+- Texto pequeno (12px / `text-xs`)
+- Cor: `--color-text-tertiary` (cinza suave, não verde escuro)
+- Posicionamento: abaixo do display circular, acima do botão "TARAR"
+- Desaparece assim que `peso > 0`
+
+**Estado do botão com peso > 0:**
+- Botão muda para ativo
+- Copy muda para: `"Registrar [nome do alimento]"`
+- Exemplo: `"Registrar Carne, peito de frango"`
+- Se o nome for longo, truncar: `"Registrar Carne, peito de frango..."`
+
+---
+
+## Correção 6 — Slider sem contexto no rodapé
+
+**Problema:** na tela de alimento selecionado, há um elemento no rodapé que parece um slider ou indicador de progresso — um ponto cinza isolado, sem label, sem valores visíveis e sem affordance clara de interação.
+
+**Diagnóstico necessário:** verificar o que esse elemento representa no código.
+
+**Se for um controle de quantidade manual** (alternativa à balança para inserir peso manualmente):
+- Adicionar label acima: `"Quantidade (g)"`
+- Exibir valor numérico atual à direita do slider
+- Exibir valor mínimo e máximo nas extremidades
+- Ou substituir por um campo de input numérico, que é mais preciso e acessível
+
+**Se for um indicador de etapas/progresso:**
+- Substituir por componente de stepper com labels textuais
+- Exemplo: `Selecionar alimento → Pesar → Confirmar`
+
+**Se não tiver propósito claro no fluxo atual:**
+- Remover temporariamente até que a funcionalidade seja definida
+
+---
+
+## Correção 7 — Copy do campo de busca
+
+**Problema:** o placeholder atual do campo de busca é:
+
+> "Buscar alimento (ex: Frango)"
+
+**Copy corrigido:**
+```
+Buscar alimento...
+```
+
+O exemplo entre parênteses é desnecessário — o contexto da tela já deixa claro o que o campo faz. Placeholders com exemplos tendem a ser ignorados e poluem visualmente.
+
+**Título do painel de busca (se existir):** nenhum — o campo de busca é autoexplicativo.
+
+---
+
+## Correção 8 — Label "Resultados da base TBCA"
+
+**Problema:** o subtítulo acima da lista de resultados exibe:
+
+> "Resultados da base TBCA"
+
+Isso é linguagem técnica. O usuário não conhece a sigla TBCA e não precisa saber disso para completar a tarefa.
+
+**Proposta A — Remover o label completamente:**
+A lista de resultados não precisa de título quando o campo de busca já está visível acima.
+
+**Proposta B — Substituir por label orientado ao usuário:**
+```
+Alimentos encontrados
+```
+
+**Decisão recomendada:** Proposta A (remover). Menos ruído visual, mais foco na tarefa.
+
+**Exceção:** se houver dois grupos de resultados distintos (base do app + TBCA), separar com headers visuais leves:
+```
+Seus alimentos       ← resultados de /alimentos/buscar
+─────────────────
+Base de alimentos    ← resultados de /tbca/alimentos
+```
+
+---
+
+## Resumo das correções
+
+| # | Correção | Impacto | Esforço estimado |
+|---|---|---|---|
+| 1 | Bottom sheet fullscreen para resultados | Alto | Médio |
+| 2 | Truncamento inteligente por palavras | Médio | Baixo |
+| 3 | Label "ALIMENTO SELECIONADO (TBCA)" | Médio | Baixo |
+| 4 | Remover mensagem técnica do sistema | Alto | Baixo |
+| 5 | Instrução quando botão desabilitado | Alto | Baixo |
+| 6 | Slider sem contexto | Médio | Médio |
+| 7 | Placeholder do campo de busca | Baixo | Baixo |
+| 8 | Label "Resultados da base TBCA" | Baixo | Baixo |
+
+---
+
+## Checklist de entrega
+
+- [ ] Bottom sheet abre ao focar no campo de busca
+- [ ] Scrollbar lateral não aparece na lista de resultados
+- [ ] Nomes truncados na última palavra completa (48 chars)
+- [ ] Label "Alimento selecionado" em sentence case, sem "(TBCA)"
+- [ ] Mensagem técnica TBCA removida da tela de seleção
+- [ ] Instrução "Coloque o alimento na balança" aparece quando peso = 0g e alimento selecionado
+- [ ] Botão exibe "Registrar [nome]" quando peso > 0g
+- [ ] Slider diagnosticado e corrigido ou removido
+- [ ] Placeholder simplificado para "Buscar alimento..."
+- [ ] Label "Resultados da base TBCA" removido ou substituído
