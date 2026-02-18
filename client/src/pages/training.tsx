@@ -330,10 +330,11 @@ export default function TrainingScreen() {
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-[60] max-w-[430px] mx-auto shadow-2xl flex flex-col max-h-[85vh]"
+                className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl z-[60] max-w-[430px] mx-auto shadow-2xl flex flex-col"
+                style={{ maxHeight: "90vh" }}
               >
-                <div className="px-6 pt-6 pb-2 flex items-center justify-between shrink-0">
-                  <h2 className="text-lg font-bold text-[#2F5641]">Criar Plano</h2>
+                <div className="px-6 pt-6 pb-3 flex items-center justify-between shrink-0 border-b border-[#E8EBE5]">
+                  <h2 className="text-lg font-bold text-[#2F5641] font-display">Novo plano de treino</h2>
                   <button
                     data-testid="button-close-create"
                     onClick={() => setShowCreateModal(false)}
@@ -343,10 +344,10 @@ export default function TrainingScreen() {
                   </button>
                 </div>
 
-                <div className="px-6 pt-2 space-y-4 overflow-y-auto flex-1">
+                <div className="px-6 pt-5 space-y-5 overflow-y-auto flex-1">
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">
-                      Nome do plano *
+                    <label className="text-xs font-semibold text-[#8B9286] mb-1.5 block">
+                      Nome do plano
                     </label>
                     <input
                       data-testid="input-plan-nome"
@@ -354,7 +355,7 @@ export default function TrainingScreen() {
                       value={nome}
                       onChange={(e) => { setNome(e.target.value); setFieldErrors((prev) => ({ ...prev, nome: "" })); }}
                       placeholder="Ex.: Hipertrofia A"
-                      className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] placeholder:text-[#8B9286]/50 ${fieldErrors.nome ? "border-[#D97952]" : "border-[#E8EBE5]"}`}
+                      className={`w-full bg-white border rounded-lg px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] placeholder:text-[#8B9286]/50 ${fieldErrors.nome ? "border-[#D97952]" : "border-[#E8EBE5]"}`}
                     />
                     {fieldErrors.nome && (
                       <p className="text-xs text-[#D97952] mt-1" data-testid="error-plan-nome">{fieldErrors.nome}</p>
@@ -362,8 +363,8 @@ export default function TrainingScreen() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] mb-1 block">
-                      Objetivo (opcional)
+                    <label className="text-xs font-semibold text-[#8B9286] mb-1.5 block">
+                      Objetivo
                     </label>
                     <input
                       data-testid="input-plan-objetivo"
@@ -371,22 +372,33 @@ export default function TrainingScreen() {
                       value={objetivo}
                       onChange={(e) => { setObjetivo(e.target.value); setFieldErrors((prev) => ({ ...prev, objetivo: "" })); }}
                       placeholder="Ex.: Ganho de massa muscular"
-                      className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] placeholder:text-[#8B9286]/50 ${fieldErrors.objetivo ? "border-[#D97952]" : "border-[#E8EBE5]"}`}
+                      className={`w-full bg-white border rounded-lg px-4 py-3 text-sm font-medium text-[#2F5641] focus:outline-none focus:border-[#2F5641] placeholder:text-[#8B9286]/50 ${fieldErrors.objetivo ? "border-[#D97952]" : "border-[#E8EBE5]"}`}
                     />
                     {fieldErrors.objetivo && (
                       <p className="text-xs text-[#D97952] mt-1" data-testid="error-plan-objetivo">{fieldErrors.objetivo}</p>
                     )}
                   </div>
+
+                  <p className="text-[13px] text-[#8B9286] leading-snug">Você poderá adicionar exercícios e definir a frequência no próximo passo.</p>
+
+                  <p className="text-xs text-[#8B9286]">* Campo obrigatório</p>
                 </div>
 
-                <div className="px-6 pt-4 pb-8 shrink-0">
+                <div className="px-6 pt-4 pb-8 shrink-0 border-t border-[#E8EBE5] flex gap-3">
+                  <button
+                    data-testid="button-cancel-plan"
+                    onClick={() => setShowCreateModal(false)}
+                    className="flex-1 h-12 rounded-lg border border-[#E8EBE5] text-[#2F5641] font-semibold text-sm active:scale-[0.98] transition-all"
+                  >
+                    Cancelar
+                  </button>
                   <button
                     data-testid="button-submit-plan"
                     onClick={handleCreateSubmit}
                     disabled={createMutation.isPending}
-                    className="w-full bg-[#2F5641] text-white py-3.5 rounded-xl font-bold text-base shadow-lg shadow-[#2F5641]/25 active:scale-[0.98] transition-all disabled:opacity-50"
+                    className="flex-1 h-12 rounded-lg bg-[#2F5641] text-white font-semibold text-sm shadow-lg shadow-[#2F5641]/25 active:scale-[0.98] transition-all disabled:opacity-50"
                   >
-                    {createMutation.isPending ? "Criando..." : "Criar Plano"}
+                    {createMutation.isPending ? "Criando..." : "Criar plano"}
                   </button>
                 </div>
               </motion.div>

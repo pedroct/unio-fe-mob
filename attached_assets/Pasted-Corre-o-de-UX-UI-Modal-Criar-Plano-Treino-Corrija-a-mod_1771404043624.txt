@@ -1,0 +1,58 @@
+Correção de UX/UI — Modal "Criar Plano" (Treino)
+Corrija a modal de criação de plano de treino conforme as especificações abaixo. Não altere lógica de negócio, chamadas de API ou estilos globais — apenas o componente desta modal.
+1. Posicionamento e comportamento
+
+Converter a modal para bottom sheet com comportamento correto: desliza de baixo para cima, com border-radius no topo (16px)
+Adicionar max-height: 90vh com scroll interno no conteúdo
+Garantir que o botão de confirmação esteja sempre visível, fixo no rodapé da modal, fora da área de scroll
+Adicionar overlay escuro semitransparente no fundo (background: rgba(0,0,0,0.4))
+
+2. Título
+
+Atual: Criar Plano
+Novo: Novo plano de treino
+
+3. Labels dos campos
+
+NOME DO PLANO * → Nome do plano
+OBJETIVO (OPCIONAL) → Objetivo
+Aplicar caixa mista em todos os labels (remover ALL CAPS)
+
+4. Placeholders
+
+Manter os placeholders atuais: Ex.: Hipertrofia A e Ex.: Ganho de massa muscular
+
+5. Helper text — campo obrigatório
+
+Adicionar abaixo do formulário, antes dos botões, o texto em fonte pequena (12px), cor neutra:
+* Campo obrigatório
+
+6. Helper text — orientação de próximo passo
+
+Adicionar abaixo do campo Objetivo, antes do rodapé:
+Você poderá adicionar exercícios e definir a frequência no próximo passo.
+Fonte: 13px, cor secundária/neutra, alinhado à esquerda
+
+7. Botões — rodapé fixo
+
+Substituir o botão único por dois botões lado a lado no rodapé da modal
+Botão secundário (esquerda): Cancelar — estilo outline ou ghost, fecha a modal sem salvar
+Botão primário (direita): Criar plano — estilo filled, cor verde primária do design system
+Ambos com height: 48px e border-radius: 8px
+
+8. Botão de fechar (×)
+
+Manter o ícone × no canto superior direito do cabeçalho
+Comportamento: fechar a modal sem salvar (mesmo que o botão Cancelar)
+
+Regras gerais
+
+Nenhum texto de interface em ALL CAPS neste componente
+Seguir o design system UNIO: tipografia Inter, cores e espaçamentos já estabelecidos no projeto
+Garantir comportamento correto em iOS e Android (testar que o teclado não oculta o botão primário)
+
+Entrega esperada
+
+Nome do arquivo/componente alterado
+Confirmação de que nenhuma lógica de API ou estado global foi modificada
+Print ou descrição do comportamento antes e depois
