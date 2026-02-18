@@ -1,0 +1,943 @@
+# Especificação — App React Native: Módulo Balança Inteligente
+
+**Data:** 18/02/2026  
+**Projeto:** UNIO Performance OS  
+**Tipo:** App companion (React Native) — módulo nutrição/balança BLE
+
+---
+
+## 1) Contexto e decisão arquitetural
+
+### Por que um segundo app?
+
+A arquitetura original do UNIO prevê **dois frontends**:
+
+| Frontend | Stack | Função |
+|----------|-------|--------|
+| **Web app** | React 19 + Vite + Tailwind | Dashboard, diário, treino, hidratação, suplementação, perfil |
+| **App mobile** | React Native (bare workflow) | BLE (balanças), HealthKit, offline-first |
+
+O time Replit construiu o **web app** (React + Vite), que funciona perfeitamente no navegador. Porém, a integração BLE com a balança de cozinha **exige um app nativo** instalado no celular — não é possível via browser (Web Bluetooth não funciona no Safari/iOS e tem suporte limitado).
+
+### Escopo deste app (MVP)
+
+**Incluído:**
+- Conexão BLE com a balança de cozinha ICOMON (KP2048B)
+- Leitura de peso em tempo real
+- Busca de alimentos (base app + TBCA)
+- Registro alimentar via pesagem
+- Fila de pesagens pendentes
+
+**Não incluído (futuro):**
+- Balança corporal Xiaomi BLE (módulo biometria)
+- HealthKit/Google Fit sync
+- Diário alimentar completo (permanece no web app)
+- Suplementação, treino, hidratação
+
+### Coexistência com o web app
+
+Ambos os apps compartilham:
+- Mesmo backend Django (API `staging.unio.tec.br` / `api.unio.tec.br`)
+- Mesma autenticação JWT (`/api/auth/pair`)
+- Mesmos endpoints, schemas e dados
+- Mesmo usuário pode usar ambos simultaneamente
+
+---
+
+## 2) Stack tecnológica
+
+```
+React Native 0.76+ (New Architecture / Fabric)
+├── TypeScript (obrigatório)
+├── react-native-ble-plx        → BLE (balança ICOMON)
+├── @react-navigation/native    → Navegação
+├── @react-navigation/stack     → Stack navigator
+├── axios ou fetch               → HTTP para API
+├── @react-native-async-storage → JWT persistido
+├── react-native-reanimated     → Animações (indicador BLE)
+└── zustand ou jotai             → Estado global (leve)
+```
+
+### Por que bare workflow (sem Expo managed)?
+
+- `react-native-ble-plx` requer módulos nativos (bridge Objective-C/Java)
+- Expo Go não suporta BLE
+- EAS build funciona, mas bare workflow dá controle total sobre o módulo nativo BLE
+- Distribuição via TestFlight (iOS) e APK/bundle (Android)
+
+---
+
+## 3) Estrutura do projeto
+
+```
+unio-balanca/
+├── android/                     # Projeto nativo Android
+├── ios/                         # Projeto nativo iOS
+├── src/
+│   ├── App.tsx                  # Entry point, navigator
+│   ├── api/
+│   │   ├── cliente.ts           # Axios/fetch configurado com JWT
+│   │   ├── autenticacao.ts      # Login, refresh, logout
+│   │   ├── nutricao.ts          # Endpoints de nutrição
+│   │   └── tipos.ts             # Types gerados da OpenAPI
+│   ├── ble/
+│   │   ├── gerenciador.ts       # BleManager wrapper singleton
+│   │   ├── icomon.ts            # Protocolo ICOMON (decode)
+│   │   ├── constantes.ts        # UUIDs, MAC, comandos ativação
+│   │   └── tipos.ts             # Types BLE
+│   ├── telas/
+│   │   ├── Login.tsx            # Tela de autenticação
+│   │   ├── BalancaInteligente.tsx  # Tela principal (peso + busca)
+│   │   ├── BuscaAlimento.tsx    # Busca com fallback TBCA
+│   │   └── Confirmacao.tsx      # Associar peso → alimento
+│   ├── componentes/
+│   │   ├── IndicadorBluetooth.tsx  # Status BLE (4 estados)
+│   │   ├── CartaoAlimento.tsx      # Item de resultado de busca
+│   │   ├── DisplayPeso.tsx         # Peso grande no centro
+│   │   └── BotaoAcao.tsx           # Botão estilizado
+│   ├── hooks/
+│   │   ├── useBalancaBLE.ts     # Hook: scan → connect → peso
+│   │   ├── useAutenticacao.ts   # Hook: JWT, login, refresh
+│   │   └── usePesagensPendentes.ts  # Hook: fila de pesagens
+│   ├── estado/
+│   │   └── store.ts             # Zustand store (JWT, BLE status, peso)
+│   └── utils/
+│       ├── codificacao.ts       # hex↔bytes↔base64
+│       └── formatacao.ts        # Formatar peso, unidade
+├── package.json
+├── tsconfig.json
+├── babel.config.js
+├── metro.config.js
+└── README.md
+```
+
+---
+
+## 4) Telas e navegação
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                      NAVEGAÇÃO                            │
+│                                                          │
+│  ┌──────────┐     JWT válido?     ┌────────────────────┐ │
+│  │  Login   │ ──── sim ─────────▶ │ BalancaInteligente │ │
+│  │          │                     │                    │ │
+│  └──────────┘                     │  [Peso: 124g]      │ │
+│                                   │  [Buscar alimento] │ │
+│                                   │  [🔵 Buscando...]  │ │
+│                                   └────────┬───────────┘ │
+│                                            │              │
+│                                    toque em "Buscar"      │
+│                                            │              │
+│                                   ┌────────▼───────────┐ │
+│                                   │  BuscaAlimento     │ │
+│                                   │                    │ │
+│                                   │  [Campo de busca]  │ │
+│                                   │  [Lista resultados]│ │
+│                                   └────────┬───────────┘ │
+│                                            │              │
+│                                    seleciona alimento     │
+│                                            │              │
+│                                   ┌────────▼───────────┐ │
+│                                   │  Confirmacao       │ │
+│                                   │                    │ │
+│                                   │  Frango: 124g      │ │
+│                                   │  Calorias: 204kcal │ │
+│                                   │  [Confirmar]       │ │
+│                                   └────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
+```
+
+### 4.1 Tela: Login
+
+**Função:** Autenticar o usuário e persistir o JWT.
+
+| Elemento | Tipo | Descrição |
+|----------|------|-----------|
+| Campo email | TextInput | Email do usuário |
+| Campo senha | TextInput (secure) | Senha |
+| Botão "Entrar" | TouchableOpacity | Chama `POST /api/auth/pair` |
+| Mensagem erro | Text | "Credenciais inválidas" se 401 |
+
+**Fluxo:**
+1. Usuário digita email/senha → `POST /api/auth/pair`
+2. Resposta: `{ "access": "...", "refresh": "..." }`
+3. Salvar `access` e `refresh` em AsyncStorage
+4. Navegar para `BalancaInteligente`
+
+**Refresh automático:**
+- Se qualquer request retornar 401, tentar refresh com `POST /api/auth/refresh`
+- Se refresh falhar, voltar para Login
+
+### 4.2 Tela: BalancaInteligente (principal)
+
+**Função:** Conectar na balança BLE, exibir peso em tempo real, iniciar busca de alimento.
+
+**Layout:**
+
+```
+┌─────────────────────────────────────┐
+│  ← Voltar    Balança     🔵 BLE    │  ← Header + IndicadorBluetooth
+│─────────────────────────────────────│
+│                                     │
+│           ┌───────────┐             │
+│           │   124.5   │             │  ← DisplayPeso (grande)
+│           │   gramas  │             │
+│           └───────────┘             │
+│                                     │
+│  ┌─────────────────────────────────┐│
+│  │ Buscar alimento (ex: Frango)   ││  ← Campo de busca (abre BuscaAlimento)
+│  └─────────────────────────────────┘│
+│                                     │
+│  ┌─ Pesagens pendentes ───────────┐ │
+│  │ 124.5g  •  Aguardando alimento │ │  ← Lista de pesagens pendentes
+│  │  83.9g  •  Aguardando alimento │ │
+│  └─────────────────────────────────┘│
+│                                     │
+│  [Pesar novamente]  [Cancelar]      │  ← Ações
+└─────────────────────────────────────┘
+```
+
+**Comportamento:**
+- Ao abrir, inicia scan BLE automaticamente (hook `useBalancaBLE`)
+- IndicadorBluetooth mostra estado em tempo real (4 estados)
+- Quando peso estável chega via BLE:
+  - Exibe em `DisplayPeso`
+  - Envia `POST /api/nutricao/diario/balanca-cozinha` (sem alimento)
+  - Pesagem aparece na lista de pendentes
+- Campo de busca abre `BuscaAlimento` (push na stack)
+
+### 4.3 Tela: BuscaAlimento
+
+**Função:** Buscar alimento com fallback TBCA, selecionar para associar à pesagem.
+
+**Layout:**
+```
+┌─────────────────────────────────────┐
+│  ← Voltar    Buscar Alimento        │
+│─────────────────────────────────────│
+│  ┌─────────────────────────────────┐│
+│  │ 🔍 Digite o nome do alimento   ││  ← Campo com debounce 300ms
+│  └─────────────────────────────────┘│
+│                                     │
+│  Fonte: Base UNIO | TBCA            │  ← Badge indicando fonte
+│                                     │
+│  ┌─────────────────────────────────┐│
+│  │ 🍗 Frango, peito, sem pele...  ││  ← CartaoAlimento
+│  │    Grupo C • TBCA               ││
+│  ├─────────────────────────────────┤│
+│  │ 🍗 Frango, coxa, com pele...   ││
+│  │    Grupo C • TBCA               ││
+│  └─────────────────────────────────┘│
+└─────────────────────────────────────┘
+```
+
+**Fluxo de busca (com fallback):**
+1. Usuário digita → debounce 300ms
+2. `GET /api/nutricao/alimentos/buscar?q=<termo>&limite=20`
+3. Se retornar `[]`: fallback `GET /api/nutricao/tbca/alimentos?busca=<termo>&limite=50`
+4. Exibir resultados (respeitar ordem da API — relevância)
+5. Ao tocar em um item → navegar para `Confirmacao`
+
+**Mapeamento de campos:**
+
+| Fonte | Label | Id para associar |
+|-------|-------|------------------|
+| Base app (`/alimentos/buscar`) | `nome` (+`marca`) | `alimento_id` (int) |
+| TBCA (`/tbca/alimentos`) | `descricao` | `alimento_tbca_id` (UUID) |
+
+### 4.4 Tela: Confirmacao
+
+**Função:** Confirmar associação do peso com o alimento selecionado.
+
+**Layout:**
+```
+┌─────────────────────────────────────┐
+│  ← Voltar    Confirmar Registro      │
+│─────────────────────────────────────│
+│                                     │
+│  Alimento:                          │
+│  Frango, peito, sem pele, cozido    │
+│                                     │
+│  Peso:  124.5g                      │
+│                                     │
+│  Refeição: [Almoço ▼]              │  ← Picker de refeição (opcional)
+│                                     │
+│  Observação:                        │
+│  ┌─────────────────────────────────┐│
+│  │                                 ││  ← TextInput opcional
+│  └─────────────────────────────────┘│
+│                                     │
+│  ┌─────────────────────────────────┐│
+│  │        ✅ Confirmar              ││  ← Botão principal
+│  └─────────────────────────────────┘│
+│  ┌─────────────────────────────────┐│
+│  │        ❌ Cancelar              ││
+│  └─────────────────────────────────┘│
+└─────────────────────────────────────┘
+```
+
+**Fluxo:**
+1. Exibe alimento + peso da pesagem pendente
+2. Usuário seleciona refeição (opcional) e adiciona observação
+3. Toca "Confirmar":
+   - `POST /api/nutricao/diario/pesagens-pendentes/{pesagemId}/associar`
+   - Body: `{ alimento_id | alimento_tbca_id, refeicao_id?, observacao? }`
+4. Sucesso → volta para `BalancaInteligente`, pesagem sai da fila
+5. Erro → exibe mensagem inline
+
+---
+
+## 5) Integração BLE — Protocolo ICOMON completo
+
+### 5.1 Constantes
+
+```typescript
+// src/ble/constantes.ts
+
+export const BALANCA_CONFIG = {
+  MAC_ADDRESS: 'D0:4D:00:5C:F6:36',
+  SERVICE_UUID: '0000ffb0-0000-1000-8000-00805f9b34fb',
+  CHAR_WRITE_UUID: '0000ffb1-0000-1000-8000-00805f9b34fb',   // Write-No-Response
+  CHAR_NOTIFY_UUID: '0000ffb2-0000-1000-8000-00805f9b34fb',  // Read + Notify
+} as const;
+
+// Comandos de ativação (handshake obrigatório)
+// A balança só envia peso real após receber estes comandos na FFB1
+export const COMANDOS_ATIVACAO: string[] = [
+  'AC010000000000000000000000AC',  // Init
+  'AC030000000000000000000000AE',  // Start weighing
+  'AC090100000000000000000000B6',  // Set unit: grams
+];
+
+// Mapa de unidades (formato 20 bytes — byte[3])
+export const MAPA_UNIDADES_20B: Record<number, string> = {
+  0x00: 'g',           // Peso métrico
+  0x10: 'ml',          // Volume água métrico
+  0x20: 'ml_milk',     // Volume leite métrico
+  0x50: 'lb_oz',       // Peso imperial
+  0x60: 'fl_oz',       // Volume água imperial
+  0x70: 'fl_oz_milk',  // Volume leite imperial
+};
+
+// Mapa de unidades (formato 14 bytes — byte[2])
+export const MAPA_UNIDADES_14B: Record<number, string> = {
+  0x01: 'g',
+  0x02: 'ml',
+  0x03: 'ml_milk',
+  0x04: 'oz',
+  0x05: 'lb_oz',
+};
+```
+
+### 5.2 Decodificação do protocolo
+
+```typescript
+// src/ble/icomon.ts
+
+import { MAPA_UNIDADES_14B, MAPA_UNIDADES_20B } from './constantes';
+
+export interface LeituraBalanca {
+  pesoGramas: number;      // Peso sempre em gramas
+  unidade: string;         // Unidade selecionada no display
+  estavel: boolean;        // Se o peso está estabilizado
+  formato: '14B' | '20B'; // Formato do pacote recebido
+  rawHex: string;          // Pacote bruto para debug
+}
+
+/**
+ * Decodifica um pacote BLE da balança ICOMON.
+ * 
+ * Formato 14 bytes (Android/BLE Scanner poll):
+ *   byte[0]   = 0xAC (header)
+ *   byte[1]   = flags (0x40 = estável)
+ *   byte[2]   = código da unidade
+ *   byte[3:5] = peso em decigramas (Little-Endian int16)
+ *   byte[13]  = checksum
+ * 
+ * Formato 20 bytes (GATT direto / Linux):
+ *   byte[0]   = 0xAC (header)
+ *   byte[1]   = flags (0x40 = estável)
+ *   byte[2]   = modo (0x00=ativo, 0x01=idle)
+ *   byte[3]   = código modo+unidade (0x00=g, 0x10=ml, etc.)
+ *   byte[4:7] = peso em miligramas (Big-Endian int24)
+ *   byte[18:20] = checksum
+ * 
+ * IMPORTANTE: bytes[4:7] no formato 20B SEMPRE contém massa em
+ * miligramas, independente da unidade selecionada no display.
+ */
+export function decodificarPacoteICOMON(bytes: Uint8Array): LeituraBalanca | null {
+  // Validar header
+  if (bytes[0] !== 0xAC) return null;
+
+  const estavel = bytes[1] === 0x40;
+  const rawHex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  if (bytes.length === 14) {
+    // Formato 14 bytes: Little-Endian decigramas
+    const unidadeCodigo = bytes[2];
+    const rawPeso = bytes[3] | (bytes[4] << 8); // int16 LE
+    const pesoGramas = rawPeso / 10;
+    const unidade = MAPA_UNIDADES_14B[unidadeCodigo] ?? 'g';
+
+    return { pesoGramas, unidade, estavel, formato: '14B', rawHex };
+  }
+
+  if (bytes.length === 20) {
+    // Formato 20 bytes: Big-Endian miligramas
+    const unidadeCodigo = bytes[3];
+    const rawPeso = (bytes[4] << 16) | (bytes[5] << 8) | bytes[6]; // int24 BE
+    const pesoGramas = rawPeso / 1000;
+    const unidade = MAPA_UNIDADES_20B[unidadeCodigo] ?? 'g';
+
+    return { pesoGramas, unidade, estavel, formato: '20B', rawHex };
+  }
+
+  return null;
+}
+```
+
+### 5.3 Hook principal: useBalancaBLE
+
+```typescript
+// src/hooks/useBalancaBLE.ts
+
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { BleManager, Device, Subscription } from 'react-native-ble-plx';
+import { Platform, PermissionsAndroid } from 'react-native';
+import { BALANCA_CONFIG, COMANDOS_ATIVACAO } from '../ble/constantes';
+import { decodificarPacoteICOMON, LeituraBalanca } from '../ble/icomon';
+import { base64ToBytes, hexToBase64 } from '../utils/codificacao';
+
+export type StatusBLE = 'buscando' | 'conectando' | 'conectado' | 'desconectado';
+
+interface UseBalancaBLEReturn {
+  status: StatusBLE;
+  leituraAtual: LeituraBalanca | null;
+  reconectar: () => void;
+  desconectar: () => void;
+}
+
+export function useBalancaBLE(): UseBalancaBLEReturn {
+  const managerRef = useRef<BleManager | null>(null);
+  const deviceRef = useRef<Device | null>(null);
+  const subscriptionRef = useRef<Subscription | null>(null);
+
+  const [status, setStatus] = useState<StatusBLE>('desconectado');
+  const [leituraAtual, setLeituraAtual] = useState<LeituraBalanca | null>(null);
+
+  // Solicitar permissões BLE (Android 12+)
+  const solicitarPermissoes = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS === 'android' && Platform.Version >= 31) {
+      const resultado = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      ]);
+      return Object.values(resultado).every(
+        r => r === PermissionsAndroid.RESULTS.GRANTED
+      );
+    }
+    if (Platform.OS === 'android') {
+      const resultado = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+      );
+      return resultado === PermissionsAndroid.RESULTS.GRANTED;
+    }
+    // iOS: permissões via Info.plist (NSBluetoothAlwaysUsageDescription)
+    return true;
+  }, []);
+
+  // Enviar comandos de ativação (handshake)
+  const enviarHandshake = useCallback(async (device: Device) => {
+    for (const cmdHex of COMANDOS_ATIVACAO) {
+      await device.writeCharacteristicWithoutResponseForService(
+        BALANCA_CONFIG.SERVICE_UUID,
+        BALANCA_CONFIG.CHAR_WRITE_UUID,
+        hexToBase64(cmdHex)
+      );
+      // Pequeno delay entre comandos (50ms)
+      await new Promise(r => setTimeout(r, 50));
+    }
+  }, []);
+
+  // Iniciar monitoramento de peso (subscribe FFB2)
+  const iniciarMonitoramento = useCallback((device: Device) => {
+    subscriptionRef.current = device.monitorCharacteristicForService(
+      BALANCA_CONFIG.SERVICE_UUID,
+      BALANCA_CONFIG.CHAR_NOTIFY_UUID,
+      (error, characteristic) => {
+        if (error) {
+          console.warn('[BLE] Erro no monitoramento:', error.message);
+          setStatus('desconectado');
+          return;
+        }
+        if (!characteristic?.value) return;
+
+        const bytes = base64ToBytes(characteristic.value);
+        const leitura = decodificarPacoteICOMON(bytes);
+
+        if (leitura && leitura.estavel && leitura.pesoGramas > 0) {
+          setLeituraAtual(leitura);
+        }
+      }
+    );
+  }, []);
+
+  // Fluxo principal: scan → connect → handshake → monitor
+  const conectar = useCallback(async () => {
+    const permitido = await solicitarPermissoes();
+    if (!permitido) {
+      console.warn('[BLE] Permissões negadas');
+      setStatus('desconectado');
+      return;
+    }
+
+    if (!managerRef.current) {
+      managerRef.current = new BleManager();
+    }
+    const manager = managerRef.current;
+
+    // Estado 1: Buscando
+    setStatus('buscando');
+    setLeituraAtual(null);
+
+    manager.startDeviceScan(
+      [BALANCA_CONFIG.SERVICE_UUID],
+      { allowDuplicates: false },
+      async (error, device) => {
+        if (error) {
+          console.warn('[BLE] Erro no scan:', error.message);
+          setStatus('desconectado');
+          return;
+        }
+
+        // Filtrar pelo MAC da balança
+        if (!device || device.id !== BALANCA_CONFIG.MAC_ADDRESS) return;
+
+        manager.stopDeviceScan();
+
+        // Estado 2: Conectando
+        setStatus('conectando');
+
+        try {
+          const connected = await device.connect({ timeout: 10000 });
+          await connected.discoverAllServicesAndCharacteristics();
+
+          deviceRef.current = connected;
+
+          // Handshake: enviar comandos de ativação para FFB1
+          await enviarHandshake(connected);
+
+          // Estado 3: Conectado — monitorar FFB2
+          setStatus('conectado');
+          iniciarMonitoramento(connected);
+
+          // Detectar desconexão
+          connected.onDisconnected((err) => {
+            console.log('[BLE] Desconectado:', err?.message ?? 'pelo dispositivo');
+            setStatus('desconectado');
+            setLeituraAtual(null);
+          });
+        } catch (e: any) {
+          console.warn('[BLE] Erro na conexão:', e.message);
+          setStatus('desconectado');
+        }
+      }
+    );
+
+    // Timeout do scan: 15 segundos
+    setTimeout(() => {
+      if (status === 'buscando') {
+        manager.stopDeviceScan();
+        setStatus('desconectado');
+      }
+    }, 15000);
+  }, [solicitarPermissoes, enviarHandshake, iniciarMonitoramento, status]);
+
+  // Desconectar
+  const desconectar = useCallback(async () => {
+    subscriptionRef.current?.remove();
+    managerRef.current?.stopDeviceScan();
+    if (deviceRef.current) {
+      try {
+        await deviceRef.current.cancelConnection();
+      } catch { /* já desconectado */ }
+    }
+    setStatus('desconectado');
+    setLeituraAtual(null);
+  }, []);
+
+  // Reconectar
+  const reconectar = useCallback(async () => {
+    await desconectar();
+    await conectar();
+  }, [desconectar, conectar]);
+
+  // Auto-conectar ao montar, desconectar ao desmontar
+  useEffect(() => {
+    conectar();
+    return () => {
+      desconectar();
+      managerRef.current?.destroy();
+    };
+  }, []);
+
+  return { status, leituraAtual, reconectar, desconectar };
+}
+```
+
+### 5.4 Utilitários de codificação
+
+```typescript
+// src/utils/codificacao.ts
+
+/**
+ * Converte hex string para Uint8Array.
+ * Ex: "AC40" → Uint8Array([0xAC, 0x40])
+ */
+export function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * Converte Uint8Array para hex string.
+ */
+export function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Converte hex string para base64 (formato esperado por react-native-ble-plx).
+ */
+export function hexToBase64(hex: string): string {
+  const bytes = hexToBytes(hex);
+  // Em React Native, usar btoa ou Buffer
+  const binary = String.fromCharCode(...bytes);
+  return btoa(binary);
+}
+
+/**
+ * Converte base64 (retornado por react-native-ble-plx) para Uint8Array.
+ */
+export function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+```
+
+---
+
+## 6) Integração com a API (endpoints reutilizados)
+
+Todos os endpoints abaixo já existem no backend e são os mesmos usados pelo web app.
+
+### 6.1 Autenticação
+
+```
+POST /api/auth/pair
+Body: { "email": "...", "password": "..." }
+Resp: { "access": "<JWT>", "refresh": "<REFRESH>" }
+
+POST /api/auth/refresh
+Body: { "refresh": "<REFRESH>" }
+Resp: { "access": "<JWT_NOVO>" }
+```
+
+### 6.2 Registrar peso (sem alimento)
+
+```
+POST /api/nutricao/diario/balanca-cozinha
+Headers: Authorization: Bearer <JWT>
+Body: {
+  "peso": 124.5,
+  "unidade": "g",
+  "mac_balanca": "D0:4D:00:5C:F6:36"
+}
+Resp 200: { "sucesso": true, "aguardando_alimento": true, ... }
+```
+
+### 6.3 Listar pesagens pendentes
+
+```
+GET /api/nutricao/diario/pesagens-pendentes
+Headers: Authorization: Bearer <JWT>
+Resp 200: { "pesagens": [...], "total": N }
+```
+
+### 6.4 Buscar alimento (base app)
+
+```
+GET /api/nutricao/alimentos/buscar?q=<termo>&limite=20
+Headers: Authorization: Bearer <JWT>
+Resp 200: [ { "id": 1, "nome": "...", ... } ]
+```
+
+### 6.5 Buscar alimento (TBCA — fallback)
+
+```
+GET /api/nutricao/tbca/alimentos?busca=<termo>&limite=50&offset=0
+Headers: Authorization: Bearer <JWT>
+Resp 200: [ { "id": "<UUID>", "descricao": "...", ... } ]
+```
+
+> **Não reordenar resultados!** A API já devolve ordenado por relevância.
+
+### 6.6 Associar pesagem a alimento
+
+```
+POST /api/nutricao/diario/pesagens-pendentes/{pesagemId}/associar
+Headers: Authorization: Bearer <JWT>
+Body (base app): { "alimento_id": 1, "refeicao_id": 2 }
+Body (TBCA):     { "alimento_tbca_id": "<UUID>", "refeicao_id": 2 }
+Resp 200: { "sucesso": true, "registro_alimentar": {...} }
+```
+
+### 6.7 Cancelar pesagem
+
+```
+DELETE /api/nutricao/diario/pesagens-pendentes/{pesagemId}
+Headers: Authorization: Bearer <JWT>
+Resp 200: { "sucesso": true, ... }
+```
+
+### 6.8 Listar refeições (para picker)
+
+```
+GET /api/nutricao/refeicoes
+Headers: Authorization: Bearer <JWT>
+Resp 200: [ { "id": 1, "nome": "Café da manhã", ... }, ... ]
+```
+
+---
+
+## 7) Fluxo completo (ponta a ponta)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    FLUXO COMPLETO                                │
+└──────────────────────────────────────────────────────────────────┘
+
+1. App abre → Login (se JWT expirado) → BalancaInteligente
+
+2. Hook useBalancaBLE inicia:
+   [Scan BLE] ──▶ Encontra D0:4D:00:5C:F6:36
+              ──▶ device.connect()
+              ──▶ discoverAllServicesAndCharacteristics()
+              ──▶ write FFB1: init + start + set_unit
+              ──▶ subscribe FFB2 (notify)
+              ──▶ Status: ✅ Conectado
+
+3. Usuário coloca alimento na balança:
+   [FFB2 notify] ──▶ decodificarPacoteICOMON(bytes)
+                 ──▶ peso estável: 124.5g
+                 ──▶ DisplayPeso atualiza: "124.5g"
+
+4. App envia peso ao backend:
+   POST /balanca-cozinha { peso: 124.5, unidade: "g", mac_balanca: "D0:4D:..." }
+   ──▶ Backend cria PesagemPendente #7
+   ──▶ Resp: { aguardando_alimento: true }
+
+5. Usuário toca "Buscar alimento":
+   ──▶ Navega para BuscaAlimento
+   ──▶ Digita "frango" → debounce 300ms
+   ──▶ GET /alimentos/buscar?q=frango → []  (base vazia)
+   ──▶ Fallback: GET /tbca/alimentos?busca=frango&limite=50
+   ──▶ Exibe lista: "Frango, peito, sem pele, cozido", etc.
+
+6. Usuário seleciona "Frango, peito, sem pele, cozido":
+   ──▶ Navega para Confirmacao
+   ──▶ Exibe: alimento + peso + refeição (picker)
+
+7. Usuário toca "Confirmar":
+   POST /pesagens-pendentes/7/associar {
+     alimento_tbca_id: "550e8400-...",
+     refeicao_id: 2,
+     observacao: ""
+   }
+   ──▶ Backend cria RegistroAlimentar
+   ──▶ Pesagem #7 sai da fila
+   ──▶ Volta para BalancaInteligente (fila vazia)
+
+8. Processo repete para próximo ingrediente.
+```
+
+---
+
+## 8) Indicador Bluetooth — 4 estados visuais
+
+```typescript
+// src/componentes/IndicadorBluetooth.tsx
+
+import React from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { StatusBLE } from '../hooks/useBalancaBLE';
+
+const CONFIG_STATUS = {
+  buscando: {
+    cor: '#3B82F6',    // Azul
+    texto: 'Buscando balança...',
+    icone: '📡',
+    pulsando: true,
+  },
+  conectando: {
+    cor: '#F59E0B',    // Amarelo
+    texto: 'Conectando...',
+    icone: '🔗',
+    pulsando: true,
+  },
+  conectado: {
+    cor: '#10B981',    // Verde
+    texto: 'Conectado',
+    icone: '✅',
+    pulsando: false,
+  },
+  desconectado: {
+    cor: '#EF4444',    // Vermelho
+    texto: 'Desconectado',
+    icone: '❌',
+    pulsando: false,
+  },
+};
+
+interface Props {
+  status: StatusBLE;
+  pesoAtual?: number;
+  onToque?: () => void;  // Para reconectar ao tocar
+}
+
+export function IndicadorBluetooth({ status, pesoAtual, onToque }: Props) {
+  const config = CONFIG_STATUS[status];
+  const texto = status === 'conectado' && pesoAtual
+    ? `Peso: ${pesoAtual.toFixed(1)}g`
+    : config.texto;
+
+  return (
+    <TouchableOpacity onPress={onToque} style={styles.container}>
+      <View style={[styles.badge, { backgroundColor: config.cor + '20' }]}>
+        {config.pulsando && <ActivityIndicator size="small" color={config.cor} />}
+        <Text style={[styles.icone]}>{config.icone}</Text>
+        <Text style={[styles.texto, { color: config.cor }]}>{texto}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+```
+
+---
+
+## 9) Permissões nativas
+
+### iOS — Info.plist
+
+```xml
+<key>NSBluetoothAlwaysUsageDescription</key>
+<string>O UNIO precisa de Bluetooth para conectar na balança de cozinha.</string>
+<key>NSBluetoothPeripheralUsageDescription</key>
+<string>O UNIO precisa de Bluetooth para conectar na balança de cozinha.</string>
+```
+
+### Android — AndroidManifest.xml
+
+```xml
+<!-- Android 12+ (API 31+) -->
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+<!-- Android 11 e inferior -->
+<uses-permission android:name="android.permission.BLUETOOTH" />
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+<!-- Declarar uso de BLE -->
+<uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+```
+
+---
+
+## 10) Setup do projeto
+
+### Inicialização
+
+```bash
+# 1. Criar projeto React Native (bare workflow)
+npx @react-native-community/cli init UnioBalanca --template react-native-template-typescript
+
+# 2. Instalar dependências
+cd UnioBalanca
+npm install react-native-ble-plx
+npm install @react-navigation/native @react-navigation/stack
+npm install react-native-screens react-native-safe-area-context
+npm install @react-native-async-storage/async-storage
+npm install zustand
+npm install axios
+
+# 3. Link nativo (iOS)
+cd ios && pod install && cd ..
+
+# 4. Configurar permissões (ver seção 9)
+
+# 5. Rodar
+npx react-native run-ios
+npx react-native run-android
+```
+
+### Variáveis de ambiente
+
+```
+# .env
+API_BASE_URL=https://staging.unio.tec.br
+# Em produção: https://api.unio.tec.br
+```
+
+---
+
+## 11) Checklist de entrega (MVP)
+
+- [ ] Projeto React Native criado e buildando (iOS + Android)
+- [ ] `react-native-ble-plx` integrado e permissões configuradas
+- [ ] Tela Login funcional (JWT persistido em AsyncStorage)
+- [ ] Hook `useBalancaBLE` conectando na balança D0:4D:00:5C:F6:36
+- [ ] Handshake ICOMON (3 comandos FFB1) funcionando
+- [ ] Decodificação de peso (14B e 20B) funcionando
+- [ ] Indicador Bluetooth com 4 estados visuais
+- [ ] `POST /balanca-cozinha` enviando peso ao backend
+- [ ] Tela BuscaAlimento com fallback TBCA
+- [ ] Tela Confirmacao associando pesagem ao alimento
+- [ ] Fila de pesagens pendentes funcional
+- [ ] `DELETE /pesagens-pendentes/{id}` (cancelar)
+- [ ] Refresh automático de JWT
+- [ ] Testado em dispositivo físico (BLE não funciona no simulador)
+
+---
+
+## 12) Observações importantes
+
+1. **BLE não funciona em simuladores/emuladores.** Testar sempre em dispositivo físico.
+2. O **MAC address pode variar no iOS** — o iOS randomiza o MAC. Usar `serviceUUIDs` como filtro principal no scan, e o MAC como fallback (Android).
+3. A balança **desliga após ~2 minutos** sem atividade. O hook deve detectar desconexão e oferecer reconexão.
+4. O backend aceita tanto `peso` + `unidade` quanto `pacote_hex` (raw). Use `peso` + `unidade` (mais simples) a menos que queira logging de debug via raw hex.
+5. O **script Python** (`scanner_balanca_icomon.py`) continua funcional para testes em Linux — pode ser útil durante o desenvolvimento para validar que o backend está recebendo dados corretamente.
+
+---
+
+## 13) Referências
+
+| Recurso | Link/Path |
+|---------|-----------|
+| Arquitetura UNIO | `docs/ARQUITETURA_INICIAL.md` |
+| Protocolo ICOMON completo | `docs/BALANCA_COZINHA.md` |
+| Parser Python (referência) | `apps/nutricao/icomon.py` |
+| Scanner Python (testes) | `scripts/scanner_balanca_icomon.py` |
+| Schemas Pydantic | `apps/nutricao/schemas.py` |
+| Endpoints API | `apps/nutricao/api.py` |
+| Handoff web app (Replit) | `docs/especificacoes/balanca_inteligente_handoff_replit.md` |
+| react-native-ble-plx docs | https://github.com/dotintent/react-native-ble-plx |
