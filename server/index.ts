@@ -36,12 +36,13 @@ app.use(
     target: STAGING_URL,
     changeOrigin: true,
     secure: true,
-    pathRewrite: (_path, req) => {
-      return `/api${req.url}`;
+    pathRewrite: (path) => {
+      if (path.startsWith("/api")) return path;
+      return `/api${path}`;
     },
     on: {
       proxyReq: (proxyReq, req) => {
-        log(`PROXY ${req.method} /api${req.url} → ${STAGING_URL}/api${req.url}`, "proxy");
+        log(`PROXY ${req.method} ${proxyReq.path} → ${STAGING_URL}${proxyReq.path}`, "proxy");
       },
       error: (err, req, res) => {
         log(`PROXY ERROR ${req.method} ${req.url}: ${err.message}`, "proxy");
