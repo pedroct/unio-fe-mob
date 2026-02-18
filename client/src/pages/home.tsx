@@ -125,7 +125,7 @@ export default function HomeScreen() {
               className="cursor-pointer"
             >
               <p className="text-xs text-[#8B9286] font-medium tracking-wider">{greeting},</p>
-              <h1 className="font-display text-xl text-[#2F5641]" data-testid="text-username">{user?.first_name || user?.username || "Usuário"}</h1>
+              <h1 className="font-display text-xl text-[#2F5641]" data-testid="text-username">{user?.first_name || user?.username || "Usuário"}!</h1>
             </div>
           </div>
           <button className="relative p-2 text-[#2F5641]">
