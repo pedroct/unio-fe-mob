@@ -30,7 +30,7 @@ export default function Layout({ children }: LayoutProps) {
           className={`flex flex-col items-center gap-1 w-14 ${isActive("/home") ? "text-[#2F5641]" : "text-[#8B9286]"}`}
         >
           <Home size={24} strokeWidth={isActive("/home") ? 2.5 : 2} />
-          <span className="text-[10px] font-medium">Home</span>
+          <span className="text-[10px] font-medium">Início</span>
         </button>
 
         {/* Nutrition */}
@@ -75,7 +75,7 @@ export default function Layout({ children }: LayoutProps) {
           className={`flex flex-col items-center gap-1 w-14 ${isActive("/supplements") ? "text-[#2F5641]" : "text-[#8B9286]"}`}
         >
           <Pill size={24} strokeWidth={isActive("/supplements") ? 2.5 : 2} />
-          <span className="text-[10px] font-medium">Suplement.</span>
+          <span className="text-[10px] font-medium">Suplementos</span>
         </button>
       </div>
     </div>

@@ -104,8 +104,8 @@ export default function HomeScreen() {
 
   const hydrationMl = hydrationData?.consumido_ml ?? 0;
   const hydrationGoal = hydrationData?.meta_ml ?? 2500;
-  const hydrationL = (hydrationMl / 1000).toFixed(1);
-  const hydrationGoalL = (hydrationGoal / 1000).toFixed(1);
+  const hydrationL = (hydrationMl / 1000).toFixed(1).replace(".", ",");
+  const hydrationGoalL = (hydrationGoal / 1000).toFixed(1).replace(".", ",");
   const hydrationDots = Math.min(Math.ceil((hydrationMl / hydrationGoal) * 5), 5);
 
   return (
@@ -124,7 +124,7 @@ export default function HomeScreen() {
               onClick={() => setLocation("/profile")}
               className="cursor-pointer"
             >
-              <p className="text-xs text-[#8B9286] font-medium uppercase tracking-wider">{greeting},</p>
+              <p className="text-xs text-[#8B9286] font-medium tracking-wider">{greeting},</p>
               <h1 className="font-display text-xl text-[#2F5641]" data-testid="text-username">{user?.first_name || user?.username || "Usuário"}</h1>
             </div>
           </div>
@@ -172,18 +172,18 @@ export default function HomeScreen() {
              {/* Center Stats */}
              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-center mb-2">
                <span className="block text-4xl font-display font-semibold text-[#2F5641]" data-testid="text-home-calories">{totalCal.toLocaleString("pt-BR")}</span>
-               <span className="text-[10px] text-[#8B9286] uppercase tracking-widest font-medium">Kcal Consumidas</span>
+               <span className="text-[10px] text-[#8B9286] tracking-widest font-medium">kcal consumidas hoje</span>
              </div>
            </div>
            
            {/* Left/Right Stats */}
            <div className="absolute top-[60px] left-0 text-left">
              <span className="block text-sm font-bold text-[#8B9286]">{calRemaining}</span>
-             <span className="text-[9px] text-[#8B9286] uppercase">Restantes</span>
+             <span className="text-[9px] text-[#8B9286]">kcal restantes</span>
            </div>
            <div className="absolute top-[60px] right-0 text-right">
              <span className="block text-sm font-bold text-[#8B9286]">{mealCount}</span>
-             <span className="text-[9px] text-[#8B9286] uppercase">Refeições</span>
+             <span className="text-[9px] text-[#8B9286]">refeições registradas</span>
            </div>
            
            {/* Macro Circles */}
@@ -214,7 +214,7 @@ export default function HomeScreen() {
             className="bg-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/5 border border-[#E8EBE5] text-left active:scale-[0.98] transition-transform"
           >
             <h3 className="font-display text-sm font-semibold text-[#2F5641] mb-1">Bater Macros</h3>
-            <p className="text-[11px] text-[#8B9286] leading-tight">Registre refeições para atingir a meta.</p>
+            <p className="text-[11px] text-[#8B9286] leading-tight">Registre suas refeições e acompanhe proteínas, carboidratos e gorduras em tempo real.</p>
           </motion.button>
           
           <motion.button
@@ -225,7 +225,7 @@ export default function HomeScreen() {
             className="bg-white p-4 rounded-2xl shadow-lg shadow-[#2F5641]/5 border border-[#E8EBE5] text-left active:scale-[0.98] transition-transform"
           >
             <h3 className="font-display text-sm font-semibold text-[#2F5641] mb-1">Meta Água</h3>
-            <p data-testid="text-water-goal-card" className="text-[11px] text-[#8B9286] leading-tight">{hydrationL}L de {hydrationGoalL}L <br/><span className="text-[#3D7A8C] font-medium">{hydrationMl >= hydrationGoal ? "Meta batida!" : hydrationMl > 0 ? "Continue assim!" : "Comece a beber!"}</span></p>
+            <p data-testid="text-water-goal-card" className="text-[11px] text-[#8B9286] leading-tight">{hydrationL} de {hydrationGoalL} L <br/><span className="text-[#3D7A8C] font-medium">{hydrationMl >= hydrationGoal ? "Meta batida!" : hydrationMl > 0 ? "Você está no caminho certo, continue!" : "Comece a beber!"}</span></p>
           </motion.button>
         </div>
 
@@ -260,8 +260,8 @@ export default function HomeScreen() {
             </div>
           ) : (
             <div className="bg-white p-4 rounded-xl border border-[#E8EBE5] shadow-sm text-center">
-              <p className="text-xs text-[#8B9286]">Nenhuma refeição registrada hoje</p>
-              <button onClick={() => setLocation("/nutrition")} className="text-xs font-semibold text-[#C7AE6A] mt-2 hover:underline">Registrar agora</button>
+              <p className="text-xs text-[#8B9286]">Nenhuma refeição registrada ainda hoje.</p>
+              <button onClick={() => setLocation("/nutrition")} className="text-xs font-semibold text-[#C7AE6A] mt-2 hover:underline">Registrar primeira refeição</button>
             </div>
           )}
         </section>
@@ -279,13 +279,14 @@ export default function HomeScreen() {
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#648D4A] mb-1">Treino</h2>
             {planosError || !planoAtivo ? (
               <>
-                <h3 className="font-display text-xl mb-4" data-testid="text-training-card">Crie seu primeiro plano</h3>
+                <h3 className="font-display text-xl mb-1" data-testid="text-training-card">Você ainda não tem um plano de treino.</h3>
+                <p className="text-xs opacity-70 mb-4">Monte sua rotina e acompanhe cada sessão aqui.</p>
                 <button 
                   onClick={(e) => { e.stopPropagation(); setLocation("/training"); }}
                   className="w-full bg-[#C7AE6A] text-white py-3 rounded-xl font-semibold text-sm shadow-md hover:bg-[#D5BD95] transition-colors flex items-center justify-center gap-2"
                   data-testid="button-go-training"
                 >
-                  Ver Treinos <ChevronRight size={16} />
+                  Criar meu plano <ChevronRight size={16} />
                 </button>
               </>
             ) : (
@@ -342,7 +343,7 @@ export default function HomeScreen() {
                  </ResponsiveContainer>
                ) : (
                  <div className="flex items-center justify-center h-full">
-                   <p className="text-[10px] text-[#8B9286]">Registre pesagens para ver o gráfico</p>
+                   <p className="text-[10px] text-[#8B9286]">Registre suas primeiras medidas para acompanhar a evolução da sua composição corporal.</p>
                  </div>
                )}
              </div>
