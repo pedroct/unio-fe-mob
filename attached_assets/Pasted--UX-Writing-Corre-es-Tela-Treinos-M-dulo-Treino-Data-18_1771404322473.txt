@@ -1,0 +1,93 @@
+# UX Writing — Correções Tela Treinos
+
+**Módulo:** Treino  
+**Data:** 18/02/2026  
+**Escopo:** Apenas textos e copy — não alterar lógica, estilos ou chamadas de API.
+
+---
+
+## 1. Título da seção de planos
+
+- **Atual:** `SEUS PLANOS`
+- **Novo:** `Seus planos`
+- **Regra:** Remover ALL CAPS. Aplicar caixa mista em todos os títulos de seção.
+
+---
+
+## 2. Contador de planos
+
+- **Atual:** `1 plano(s)`
+- **Novo:** pluralização condicional correta
+  - `1 plano` quando count === 1
+  - `{n} planos` quando count > 1
+  - `Nenhum plano criado` quando count === 0
+- **Regra:** Nunca expor recursos de desenvolvimento (`(s)`) na interface.
+
+---
+
+## 3. Timestamp do card de plano
+
+- **Atual:** `agora`
+- **Novo:** `Criado hoje`
+- **Regra:** Timestamps devem ter contexto temporal legível.
+  - Se criado hoje → `Criado hoje`
+  - Se criado ontem → `Criado ontem`
+  - Se criado há mais de 2 dias → `Criado em {data no formato dd/mm/aaaa}`
+
+---
+
+## 4. Badge de status do plano
+
+- **Atual:** `Ativo` (sem explicação de regra)
+- **Manter:** `Ativo`
+- **Adicionar:** helper text abaixo do badge com a seguinte string:
+  `Apenas um plano pode estar ativo por vez.`
+- **Estilo do helper:** fonte 12px, cor neutra/secundária, alinhado à esquerda
+
+---
+
+## 5. Card Histórico de sessões
+
+- **Título:** manter `Histórico de sessões`
+- **Subtexto atual:** `Veja suas sessões anteriores`
+- **Subtexto novo:** `Sessões registradas e desempenho por treino`
+- **Regra:** Subtexto deve acrescentar informação, não repetir o título.
+
+---
+
+## 6. Botão Criar Plano
+
+- **Atual:** `+ Criar Plano`
+- **Novo:** `+ Criar novo plano`
+- **Regra:** CTA em caixa mista. Apenas a primeira palavra em maiúscula,
+  exceto nomes próprios.
+
+---
+
+## 7. Estado vazio (sem nenhum plano criado)
+
+Implementar estado vazio caso o usuário não tenha nenhum plano.
+Usar os seguintes textos:
+
+- **Título:** `Você ainda não tem um plano de treino.`
+- **Subtexto:** `Monte sua rotina e acompanhe cada sessão aqui.`
+- **CTA:** `Criar meu primeiro plano`
+
+---
+
+## Regras gerais de UX Writing (aplicar nesta tela e manter como padrão)
+
+- Nenhum texto de interface em ALL CAPS
+- Pluralização sempre condicional — nunca expor `(s)` ao usuário
+- Timestamps sempre contextualizados — nunca exibir `agora` sem referência
+- Subtextos devem informar, não repetir o título
+- CTAs em caixa mista, verbo no infinitivo, diretos e orientados à ação
+
+---
+
+## Entrega esperada
+
+- Nome do arquivo/componente alterado
+- Confirmação de que nenhuma lógica, estilo ou chamada de API foi modificada
+- Listagem de strings não encontradas no código
+  (caso o texto atual seja diferente do mapeado aqui)

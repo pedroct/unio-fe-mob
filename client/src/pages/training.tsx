@@ -49,21 +49,16 @@ function isApiError422(err: unknown): err is ApiError422 {
   );
 }
 
-function formatRelativeDate(dateStr: string): string {
+function formatCreatedDate(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
+  const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((nowDay.getTime() - dateDay.getTime()) / 86400000);
 
-  if (diffMin < 1) return "agora";
-  if (diffMin < 60) return `${diffMin} min atrás`;
-  if (diffHours < 24) return `${diffHours}h atrás`;
-  if (diffDays === 1) return "ontem";
-  if (diffDays < 7) return `${diffDays} dias atrás`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} sem atrás`;
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  if (diffDays === 0) return "Criado hoje";
+  if (diffDays === 1) return "Criado ontem";
+  return `Criado em ${date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`;
 }
 
 export default function TrainingScreen() {
@@ -218,8 +213,8 @@ export default function TrainingScreen() {
             <>
               <section className="space-y-3 mb-6">
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide">Seus Planos</h2>
-                  <span className="text-xs text-[#8B9286]">{planosData?.total_itens ?? 0} plano(s)</span>
+                  <h2 className="text-sm font-bold text-[#2F5641] tracking-wide">Seus planos</h2>
+                  <span className="text-xs text-[#8B9286]">{(planosData?.total_itens ?? 0) === 0 ? "Nenhum plano criado" : (planosData?.total_itens ?? 0) === 1 ? "1 plano" : `${planosData?.total_itens} planos`}</span>
                 </div>
 
                 {planos.length === 0 ? (
@@ -232,13 +227,14 @@ export default function TrainingScreen() {
                     <div className="w-16 h-16 rounded-full bg-[#E8EBE5]/50 flex items-center justify-center">
                       <Dumbbell className="w-8 h-8 text-[#8B9286]" />
                     </div>
-                    <p className="text-sm text-[#8B9286] text-center">Nenhum plano criado</p>
+                    <p className="text-sm font-semibold text-[#2F5641] text-center">Você ainda não tem um plano de treino.</p>
+                    <p className="text-xs text-[#8B9286] text-center">Monte sua rotina e acompanhe cada sessão aqui.</p>
                     <button
                       data-testid="button-create-first-plan"
                       onClick={() => { setFieldErrors({}); setNome(""); setObjetivo(""); setShowCreateModal(true); }}
                       className="bg-[#2F5641] text-white px-6 py-2.5 rounded-xl text-sm font-medium active:scale-95 transition-transform"
                     >
-                      Criar primeiro plano
+                      Criar meu primeiro plano
                     </button>
                   </motion.div>
                 ) : (
@@ -269,10 +265,13 @@ export default function TrainingScreen() {
                                 </span>
                               )}
                             </div>
+                            {plano.ativo && (
+                              <p className="text-[11px] text-[#8B9286] mb-1">Apenas um plano pode estar ativo por vez.</p>
+                            )}
                             {plano.objetivo && (
                               <p className="text-xs text-[#8B9286] mb-1 line-clamp-2">{plano.objetivo}</p>
                             )}
-                            <p className="text-[10px] text-[#8B9286]/70">{formatRelativeDate(plano.atualizado_em)}</p>
+                            <p className="text-[10px] text-[#8B9286]/70">{formatCreatedDate(plano.atualizado_em)}</p>
                           </button>
                           <button
                             data-testid={`button-delete-plan-${plano.id}`}
@@ -298,7 +297,7 @@ export default function TrainingScreen() {
                 </div>
                 <div className="flex-1 text-left">
                   <span className="text-sm font-semibold text-[#2F5641]">Histórico de sessões</span>
-                  <p className="text-[10px] text-[#8B9286]">Veja suas sessões anteriores</p>
+                  <p className="text-[10px] text-[#8B9286]">Sessões registradas e desempenho por treino</p>
                 </div>
                 <ChevronLeft size={16} className="text-[#8B9286] rotate-180" />
               </button>
@@ -309,7 +308,7 @@ export default function TrainingScreen() {
                 className="w-full py-4 border-2 border-dashed border-[#C7AE6A] rounded-2xl flex items-center justify-center gap-2 text-[#C7AE6A] hover:bg-[#C7AE6A]/5 active:scale-[0.98] transition-all mb-6"
               >
                 <Plus size={18} strokeWidth={2.5} />
-                <span className="font-semibold text-sm">Criar Plano</span>
+                <span className="font-semibold text-sm">Criar novo plano</span>
               </button>
             </>
           )}
