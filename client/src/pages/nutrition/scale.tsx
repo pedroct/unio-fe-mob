@@ -21,6 +21,41 @@ interface AlimentoItem {
   unidade_medida: string;
 }
 
+interface AlimentoTBCAItem {
+  id: string;
+  codigo_tbca: string;
+  descricao: string;
+  nome_cientifico: string | null;
+  grupo_alimentar: { id: string; codigo_tbca: string; nome: string } | null;
+  fonte_dados: string;
+}
+
+type SelectedFood =
+  | { source: "app"; data: AlimentoItem }
+  | { source: "tbca"; data: AlimentoTBCAItem };
+
+interface PesagemPendente {
+  id: number;
+  peso_original: number;
+  unidade_original: string;
+  peso_gramas: number;
+  status: string;
+  mac_balanca: string | null;
+  pesado_em: string;
+  associado_em: string | null;
+  registro_alimentar_id: number | null;
+}
+
+function getFoodLabel(food: SelectedFood): string {
+  return food.source === "app" ? food.data.nome : food.data.descricao;
+}
+
+function getFoodSubtitle(food: SelectedFood): string | null {
+  if (food.source === "app" && food.data.marca) return food.data.marca;
+  if (food.source === "tbca" && food.data.grupo_alimentar) return food.data.grupo_alimentar.nome;
+  return null;
+}
+
 export default function NutritionScaleScreen() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -30,26 +65,56 @@ export default function NutritionScaleScreen() {
   const [weight, setWeight] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedFood, setSelectedFood] = useState<AlimentoItem | null>(null);
+  const [selectedFood, setSelectedFood] = useState<SelectedFood | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [pendingPesagemId, setPendingPesagemId] = useState<number | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const { data: foods = [], isLoading: foodsLoading } = useQuery<AlimentoItem[]>({
+  const { data: appFoods = [], isLoading: appFoodsLoading, isFetched: appFoodsFetched, isError: appFoodsError } = useQuery<AlimentoItem[]>({
     queryKey: ["nutricao", "alimentos", "buscar", debouncedSearch],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (debouncedSearch) params.set("q", debouncedSearch);
-      params.set("limite", "30");
-      const res = await apiFetch(`/api/nutricao/alimentos/buscar?${params.toString()}`);
+      const res = await apiFetch(`/api/nutricao/alimentos/buscar?q=${encodeURIComponent(debouncedSearch)}&limite=20`);
       if (!res.ok) throw new Error("Erro ao buscar alimentos");
       return res.json();
     },
     enabled: !!user && debouncedSearch.length >= 2,
   });
+
+  const shouldFallbackToTBCA = debouncedSearch.length >= 2 && (appFoodsFetched || appFoodsError) && appFoods.length === 0;
+
+  const { data: tbcaFoods = [], isLoading: tbcaFoodsLoading } = useQuery<AlimentoTBCAItem[]>({
+    queryKey: ["nutricao", "tbca", "alimentos", debouncedSearch],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/nutricao/tbca/alimentos?busca=${encodeURIComponent(debouncedSearch)}&limite=50&offset=0`);
+      if (!res.ok) throw new Error("Erro ao buscar na TBCA");
+      return res.json();
+    },
+    enabled: !!user && shouldFallbackToTBCA,
+  });
+
+  const { data: pendingData } = useQuery<{ pesagens: PesagemPendente[]; total: number }>({
+    queryKey: ["nutricao", "pesagens-pendentes"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/nutricao/diario/pesagens-pendentes");
+      if (!res.ok) throw new Error("Erro ao buscar pesagens pendentes");
+      return res.json();
+    },
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (pendingData?.pesagens?.length) {
+      const latest = pendingData.pesagens[0];
+      if (latest.status === "PENDENTE") {
+        setWeight(Math.round(latest.peso_gramas));
+        setPendingPesagemId(latest.id);
+      }
+    }
+  }, [pendingData]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -58,40 +123,96 @@ export default function NutritionScaleScreen() {
     return () => clearTimeout(timer);
   }, []);
 
-  const currentStats = selectedFood ? {
-    kcal: Math.round(selectedFood.calorias * (weight / 100)),
-    protein: Math.round(selectedFood.proteinas * (weight / 100) * 10) / 10,
-    carbs: Math.round(selectedFood.carboidratos * (weight / 100) * 10) / 10,
-    fat: Math.round(selectedFood.gorduras * (weight / 100) * 10) / 10,
+  const isSearching = appFoodsLoading || tbcaFoodsLoading;
+  const hasFoods = appFoods.length > 0 || tbcaFoods.length > 0;
+  const showingTBCA = appFoods.length === 0 && tbcaFoods.length > 0;
+
+  const currentStats = selectedFood?.source === "app" ? {
+    kcal: Math.round(selectedFood.data.calorias * (weight / 100)),
+    protein: Math.round(selectedFood.data.proteinas * (weight / 100) * 10) / 10,
+    carbs: Math.round(selectedFood.data.carboidratos * (weight / 100) * 10) / 10,
+    fat: Math.round(selectedFood.data.gorduras * (weight / 100) * 10) / 10,
   } : { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
-  const addMutation = useMutation({
+  const pendingWeightOriginal = pendingData?.pesagens?.[0]?.peso_gramas ?? null;
+  const weightMatchesPending = pendingPesagemId !== null && pendingWeightOriginal !== null && weight === Math.round(pendingWeightOriginal);
+
+  const confirmMutation = useMutation({
     mutationFn: async () => {
       if (!selectedFood || weight === 0) throw new Error("Selecione um alimento e peso");
-      const res = await apiFetch("/api/nutricao/diario/registrar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          alimento_id: selectedFood.id,
-          quantidade: weight,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.mensagem || data.detail || "Erro ao registrar alimento.");
+
+      if (pendingPesagemId && weightMatchesPending) {
+        const body: Record<string, unknown> = {
+          observacao: "Registrado via balança inteligente",
+        };
+        if (selectedFood.source === "app") {
+          body.alimento_id = selectedFood.data.id;
+        } else {
+          body.alimento_tbca_id = selectedFood.data.id;
+        }
+        const res = await apiFetch(`/api/nutricao/diario/pesagens-pendentes/${pendingPesagemId}/associar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.mensagem || data.detail || "Erro ao associar alimento");
+        }
+        return res.json();
+      } else {
+        const body: Record<string, unknown> = {
+          peso: weight,
+          unidade: "g",
+        };
+        if (selectedFood.source === "app") {
+          body.alimento_id = selectedFood.data.id;
+        } else {
+          body.alimento_tbca_id = selectedFood.data.id;
+        }
+        const res = await apiFetch("/api/nutricao/diario/balanca-cozinha", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.mensagem || data.detail || "Erro ao registrar alimento");
+        }
+        return res.json();
       }
-      return res.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["nutricao"] });
       setSaveSuccess(true);
-      toast({ title: "Alimento registrado", description: data.mensagem || `${selectedFood?.nome} adicionado` });
+      toast({
+        title: "Alimento registrado",
+        description: data.mensagem || `${getFoodLabel(selectedFood!)} registrado`,
+      });
       setTimeout(() => {
         setLocation("/nutrition");
       }, 1500);
     },
     onError: (err: Error) => {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const discardMutation = useMutation({
+    mutationFn: async (pesagemId: number) => {
+      const res = await apiFetch(`/api/nutricao/diario/pesagens-pendentes/${pesagemId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.mensagem || data.detail || "Erro ao descartar pesagem");
+      }
+    },
+    onSuccess: () => {
+      setPendingPesagemId(null);
+      setWeight(0);
+      queryClient.invalidateQueries({ queryKey: ["nutricao", "pesagens-pendentes"] });
+      toast({ title: "Pesagem descartada" });
     },
   });
 
@@ -166,13 +287,25 @@ export default function NutritionScaleScreen() {
               </svg>
             </div>
 
-            <button
-              data-testid="button-tare"
-              onClick={() => setWeight(0)}
-              className="mt-6 text-[10px] font-bold uppercase tracking-widest text-[#C7AE6A] border border-[#C7AE6A] px-5 py-1.5 rounded-full hover:bg-[#C7AE6A]/10 active:scale-95 transition-all"
-            >
-              Tarar
-            </button>
+            <div className="flex items-center gap-3 mt-6">
+              <button
+                data-testid="button-tare"
+                onClick={() => {
+                  setWeight(0);
+                  if (pendingPesagemId) {
+                    discardMutation.mutate(pendingPesagemId);
+                  }
+                }}
+                className="text-[10px] font-bold uppercase tracking-widest text-[#C7AE6A] border border-[#C7AE6A] px-5 py-1.5 rounded-full hover:bg-[#C7AE6A]/10 active:scale-95 transition-all"
+              >
+                Tarar
+              </button>
+              {pendingPesagemId && (
+                <span className="text-[10px] text-[#648D4A] font-medium bg-[#648D4A]/10 px-3 py-1 rounded-full">
+                  Peso registrado
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 bg-white rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.05)] border-t border-[#E8EBE5] -mx-6 px-6 pt-6 flex flex-col">
@@ -185,8 +318,8 @@ export default function NutritionScaleScreen() {
                 <div className="w-16 h-16 rounded-full bg-[#648D4A]/10 flex items-center justify-center">
                   <Check size={32} className="text-[#648D4A]" />
                 </div>
-                <p className="text-lg font-semibold text-[#2F5641]">Salvo com sucesso!</p>
-                <p className="text-sm text-[#8B9286]">Dados persistidos no servidor</p>
+                <p className="text-lg font-semibold text-[#2F5641]">Registrado com sucesso!</p>
+                <p className="text-sm text-[#8B9286]">Dados salvos no seu diário</p>
               </motion.div>
             ) : !selectedFood ? (
               <div className="flex-1 flex flex-col">
@@ -203,28 +336,51 @@ export default function NutritionScaleScreen() {
                   />
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-2 pb-6">
-                  {foodsLoading ? (
+                <div className="flex-1 overflow-y-auto space-y-1 pb-6">
+                  {isSearching ? (
                     <div className="text-center py-8">
                       <Loader2 size={24} className="animate-spin mx-auto text-[#8B9286]" />
                       <p className="text-xs text-[#8B9286] mt-2">Buscando alimentos...</p>
                     </div>
-                  ) : searchQuery.length >= 2 && foods.length > 0 ? (
-                    foods.map((food: AlimentoItem) => (
-                      <button
-                        key={food.id}
-                        data-testid={`button-food-${food.id}`}
-                        onClick={() => setSelectedFood(food)}
-                        className="w-full text-left p-3 rounded-xl hover:bg-[#FAFBF8] border border-transparent hover:border-[#E8EBE5] transition-all flex justify-between items-center group"
-                      >
-                        <div>
-                          <span className="font-medium text-[#2F5641] text-sm block">{food.nome}</span>
-                          {food.marca && <span className="text-[10px] text-[#8B9286]">{food.marca}</span>}
-                        </div>
-                        <Plus size={16} className="text-[#C7AE6A] opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </button>
-                    ))
-                  ) : searchQuery.length >= 2 && foods.length === 0 && !foodsLoading ? (
+                  ) : debouncedSearch.length >= 2 && hasFoods ? (
+                    <>
+                      {showingTBCA && (
+                        <p className="text-[10px] text-[#8B9286] mb-2 px-1">Resultados da base TBCA</p>
+                      )}
+                      {appFoods.map((food) => (
+                        <button
+                          key={`app-${food.id}`}
+                          data-testid={`button-food-app-${food.id}`}
+                          onClick={() => setSelectedFood({ source: "app", data: food })}
+                          className="w-full text-left p-3 rounded-xl hover:bg-[#FAFBF8] border border-transparent hover:border-[#E8EBE5] transition-all flex justify-between items-center group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-[#2F5641] text-sm block truncate">{food.nome}</span>
+                            {food.marca && <span className="text-[10px] text-[#8B9286]">{food.marca}</span>}
+                            <span className="text-[10px] text-[#648D4A] ml-1">{food.calorias} kcal/100g</span>
+                          </div>
+                          <Plus size={16} className="text-[#C7AE6A] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2" />
+                        </button>
+                      ))}
+                      {tbcaFoods.map((food) => (
+                        <button
+                          key={`tbca-${food.id}`}
+                          data-testid={`button-food-tbca-${food.id}`}
+                          onClick={() => setSelectedFood({ source: "tbca", data: food })}
+                          className="w-full text-left p-3 rounded-xl hover:bg-[#FAFBF8] border border-transparent hover:border-[#E8EBE5] transition-all flex justify-between items-center group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-[#2F5641] text-sm block truncate">{food.descricao}</span>
+                            {food.grupo_alimentar && (
+                              <span className="text-[10px] text-[#8B9286]">{food.grupo_alimentar.nome}</span>
+                            )}
+                            <span className="text-[10px] text-[#C7AE6A] ml-1">TBCA</span>
+                          </div>
+                          <Plus size={16} className="text-[#C7AE6A] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2" />
+                        </button>
+                      ))}
+                    </>
+                  ) : debouncedSearch.length >= 2 && !hasFoods && !isSearching ? (
                     <div className="text-center py-8 opacity-60">
                       <Search size={32} className="mx-auto mb-2 text-[#8B9286]" />
                       <p className="text-xs text-[#8B9286]">Nenhum alimento encontrado para "{searchQuery}"</p>
@@ -232,7 +388,7 @@ export default function NutritionScaleScreen() {
                   ) : (
                     <div className="text-center py-8 opacity-40">
                       <Search size={32} className="mx-auto mb-2 text-[#8B9286]" />
-                      <p className="text-xs text-[#8B9286]">Digite para buscar na base de dados</p>
+                      <p className="text-xs text-[#8B9286]">Digite ao menos 2 letras para buscar</p>
                     </div>
                   )}
                 </div>
@@ -240,48 +396,67 @@ export default function NutritionScaleScreen() {
             ) : (
               <div className="flex-1 flex flex-col">
                 <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] block mb-0.5">Alimento Selecionado</span>
-                    <h3 data-testid="text-selected-food" className="font-semibold text-[#2F5641] text-lg leading-tight">{selectedFood.nome}</h3>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] block mb-0.5">
+                      Alimento selecionado{selectedFood.source === "tbca" ? " (TBCA)" : ""}
+                    </span>
+                    <h3 data-testid="text-selected-food" className="font-semibold text-[#2F5641] text-lg leading-tight truncate">
+                      {getFoodLabel(selectedFood)}
+                    </h3>
+                    {getFoodSubtitle(selectedFood) && (
+                      <p className="text-xs text-[#8B9286] truncate">{getFoodSubtitle(selectedFood)}</p>
+                    )}
                   </div>
                   <button
                     data-testid="button-clear-food"
                     onClick={() => setSelectedFood(null)}
-                    className="w-8 h-8 rounded-full bg-[#F5F3EE] flex items-center justify-center text-[#8B9286]"
+                    className="w-8 h-8 rounded-full bg-[#F5F3EE] flex items-center justify-center text-[#8B9286] shrink-0 ml-2"
                   >
                     <X size={16} />
                   </button>
                 </div>
 
-                <div className="grid grid-cols-4 gap-2 text-center mb-6">
-                  <div className="bg-[#FAFBF8] rounded-xl p-2 border border-[#E8EBE5]">
-                    <span data-testid="text-stat-kcal" className="block text-lg font-bold text-[#2F5641]">{currentStats.kcal}</span>
-                    <span className="text-[9px] uppercase font-bold text-[#8B9286]">Kcal</span>
+                {selectedFood.source === "app" && (
+                  <div className="grid grid-cols-4 gap-2 text-center mb-6">
+                    <div className="bg-[#FAFBF8] rounded-xl p-2 border border-[#E8EBE5]">
+                      <span data-testid="text-stat-kcal" className="block text-lg font-bold text-[#2F5641]">{currentStats.kcal}</span>
+                      <span className="text-[9px] uppercase font-bold text-[#8B9286]">Kcal</span>
+                    </div>
+                    <div className="bg-[#FAFBF8] rounded-xl p-2 border border-[#E8EBE5]">
+                      <span data-testid="text-stat-protein" className="block text-lg font-bold text-[#648D4A]">{currentStats.protein}g</span>
+                      <span className="text-[9px] uppercase font-bold text-[#8B9286]">Prot</span>
+                    </div>
+                    <div className="bg-[#FAFBF8] rounded-xl p-2 border border-[#E8EBE5]">
+                      <span data-testid="text-stat-carbs" className="block text-lg font-bold text-[#D97952]">{currentStats.carbs}g</span>
+                      <span className="text-[9px] uppercase font-bold text-[#8B9286]">Carb</span>
+                    </div>
+                    <div className="bg-[#FAFBF8] rounded-xl p-2 border border-[#E8EBE5]">
+                      <span data-testid="text-stat-fat" className="block text-lg font-bold text-[#C7AE6A]">{currentStats.fat}g</span>
+                      <span className="text-[9px] uppercase font-bold text-[#8B9286]">Gord</span>
+                    </div>
                   </div>
-                  <div className="bg-[#FAFBF8] rounded-xl p-2 border border-[#E8EBE5]">
-                    <span data-testid="text-stat-protein" className="block text-lg font-bold text-[#648D4A]">{currentStats.protein}g</span>
-                    <span className="text-[9px] uppercase font-bold text-[#8B9286]">Prot</span>
+                )}
+
+                {selectedFood.source === "tbca" && (
+                  <div className="bg-[#FAFBF8] rounded-xl p-3 border border-[#E8EBE5] mb-6">
+                    <p className="text-xs text-[#8B9286]">
+                      Alimento da base TBCA — os macros serão calculados pelo servidor ao registrar.
+                    </p>
                   </div>
-                  <div className="bg-[#FAFBF8] rounded-xl p-2 border border-[#E8EBE5]">
-                    <span data-testid="text-stat-carbs" className="block text-lg font-bold text-[#D97952]">{currentStats.carbs}g</span>
-                    <span className="text-[9px] uppercase font-bold text-[#8B9286]">Carb</span>
-                  </div>
-                  <div className="bg-[#FAFBF8] rounded-xl p-2 border border-[#E8EBE5]">
-                    <span data-testid="text-stat-fat" className="block text-lg font-bold text-[#C7AE6A]">{currentStats.fat}g</span>
-                    <span className="text-[9px] uppercase font-bold text-[#8B9286]">Gord</span>
-                  </div>
-                </div>
+                )}
 
                 <button
                   data-testid="button-confirm"
-                  disabled={weight === 0 || addMutation.isPending}
-                  onClick={() => addMutation.mutate()}
+                  disabled={weight === 0 || confirmMutation.isPending}
+                  onClick={() => confirmMutation.mutate()}
                   className="w-full bg-[#2F5641] disabled:bg-[#E8EBE5] disabled:text-[#8B9286] text-white py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-[#2F5641]/20 flex items-center justify-center gap-2 active:scale-[0.98] transition-all mt-auto mb-6"
                 >
-                  {addMutation.isPending ? (
+                  {confirmMutation.isPending ? (
                     <><Loader2 size={20} className="animate-spin" /> Registrando...</>
+                  ) : weight === 0 ? (
+                    <>Informe o peso para confirmar</>
                   ) : (
-                    <><Plus size={20} /> Confirmar {weight}g</>
+                    <><Plus size={20} /> Confirmar {weight} g</>
                   )}
                 </button>
               </div>
