@@ -1102,7 +1102,7 @@ function CreateProtocoloModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-[60] flex items-end justify-center"
       data-testid="modal-criar-protocolo"
     >
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -1112,6 +1112,7 @@ function CreateProtocoloModal({
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
         className="relative w-full max-w-[430px] bg-[#FAFBF8] rounded-t-3xl max-h-[85vh] flex flex-col"
+        style={{ maxHeight: "calc(85vh - env(safe-area-inset-bottom, 0px))" }}
       >
         <div className="shrink-0 bg-[#FAFBF8] px-6 pt-6 pb-4 border-b border-[#E8EBE5] rounded-t-3xl">
           <div className="flex items-center justify-between mb-1">
@@ -1315,7 +1316,7 @@ function CreateProtocoloModal({
           </div>
         </div>
 
-        <div className="shrink-0 bg-[#FAFBF8] px-6 py-4 border-t border-[#E8EBE5]">
+        <div className="shrink-0 bg-[#FAFBF8] px-6 pt-4 pb-6 border-t border-[#E8EBE5]">
           <div className="flex gap-3">
             <button
               onClick={onClose}
