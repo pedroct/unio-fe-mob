@@ -149,6 +149,7 @@ export default function ProfileScreen() {
       return profileData as StagingProfile;
     },
     onSuccess: async (data) => {
+      console.log("[profile] PATCH response:", JSON.stringify(data));
       setFieldErrors({});
       queryClient.setQueryData(["profile"], data);
       queryClient.invalidateQueries({ queryKey: ["nutricao"] });
