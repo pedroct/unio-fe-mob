@@ -1,0 +1,568 @@
+# Handoff Replit — Correção “Balança Inteligente” (Busca de alimentos)
+
+**Data:** 18/02/2026  
+**Responsável backend:** time UNIO (este repositório)  
+**Responsável Replit:** correção do frontend e integração HTTP
+
+---
+
+## 1) Problema reportado
+
+Na tela **Balança Inteligente**, ao pesquisar por um alimento no campo “Buscar alimento (ex: Frango)”, **não retorna resultados**.
+
+Causa mais comum: frontend chamando endpoint/parâmetros errados, sem JWT, ou consultando apenas a base `Alimento` (que pode estar vazia em alguns ambientes) em vez de usar TBCA.
+
+---
+
+## 1.1 Fluxo correto (obrigatório) para a tela “Balança Inteligente”
+
+> Este é o fluxo que o frontend deve seguir. Ele é diferente do “buscar → escolher quantidade → POST genérico”.
+
+### Estado 1: receber peso (sem alimento ainda)
+
+1. O app React Native conecta na balança via BLE (`react-native-ble-plx`), recebe a notificação de peso estável e decodifica o valor (ver seção 1.2).
+2. Frontend chama:
+  - `POST /api/nutricao/diario/balanca-cozinha`
+  - Body: `{ "peso": <valor_decodificado>, "unidade": "g", "mac_balanca": "<MAC>" }`
+3. Se o frontend ainda não informou alimento, o backend responde `200` com:
+  - `aguardando_alimento: true`
+  - mensagem informando que a pesagem foi enfileirada
+
+> Importante: o ID da pesagem pendente **não vem** nesta resposta. Para obter o `pesagemId`, o frontend deve chamar a fila.
+
+### Estado 2: obter a pesagem pendente atual
+
+4. Frontend chama:
+  - `GET /api/nutricao/diario/pesagens-pendentes`
+5. Usar a pesagem mais recente (`pesagens[0]`) como “peso atual” (se houver).
+
+### Estado 3: usuário busca alimento (com fallback)
+
+6. Quando usuário digitar no campo de busca:
+  - primeira tentativa: `GET /api/nutricao/alimentos/buscar?q=<termo>&limite=20`
+  - se retornar `[]` (ou total muito baixo, conforme decisão de produto), fazer fallback:
+    - `GET /api/nutricao/tbca/alimentos?busca=<termo>&limite=50&offset=0`
+
+> TBCA tem schema diferente: usar `descricao` (não `nome`) e o `id` é UUID.
+
+### Estado 4: associar a pesagem ao alimento escolhido (finaliza)
+
+7. Ao selecionar um item, chamar:
+  - `POST /api/nutricao/diario/pesagens-pendentes/{pesagemId}/associar`
+8. Enviar:
+  - se item veio de `/alimentos/buscar`: `{"alimento_id": <int>}`
+  - se item veio de `/tbca/alimentos`: `{"alimento_tbca_id": "<uuid>"}`
+9. Em sucesso: pesagem sai da fila (status deixa de ser `PENDENTE`) e o registro alimentar é criado.
+
+### O que remover (para corrigir o bug)
+
+- Remover **mock fixo** de “124g” na UI.
+- Remover o fluxo de “salvar” usando `POST /api/nutricao/diario/registrar` como caminho principal desta tela.
+  - Esse endpoint existe e continua válido para registro manual no diário, mas **não** é o fluxo correto da balança.
+
+---
+## 1.2 Conexão BLE e indicador de status Bluetooth (correção obrigatória)
+
+### Contexto de arquitetura
+
+O app mobile é **React Native (bare workflow)** com a lib **`react-native-ble-plx`** para BLE. É o **próprio celular** que conecta diretamente na balança via Bluetooth Low Energy. Não existe intermediário — não há script Python, gateway ou servidor separado para BLE em produção.
+
+> O script Python (`scripts/scanner_balanca_icomon.py`) existe apenas para **desenvolvimento e testes em Linux**. Em produção, o React Native assume o papel de scanner BLE.
+
+### Problema atual
+
+O ícone de Bluetooth no canto superior direito da tela "Balança Inteligente" exibe **"✓ CONECTADO"** após um timer fixo de ~2,5 segundos. Isso é um **mock** — não há conexão BLE real.
+
+### O que remover
+
+- Remover o **timer de 2,5s** que simula conexão Bluetooth.
+- Remover qualquer lógica de `setTimeout` / `setInterval` que altera o status para "CONECTADO" sem validação real.
+
+### O que implementar
+
+O indicador de Bluetooth deve refletir o **estado real da conexão BLE** gerenciada por `react-native-ble-plx`.
+
+#### Dados da balança ICOMON (para conexão BLE)
+
+| Propriedade | Valor |
+|-------------|-------|
+| **Modelo** | KP2048B (Smart Kitchen Scale) |
+| **MAC Address** | `D0:4D:00:5C:F6:36` |
+| **Service UUID** | `0000FFB0-0000-1000-8000-00805f9b34fb` |
+| **Characteristic Write** | `FFB1` (Write-No-Response) — comandos de ativação |
+| **Characteristic Notify** | `FFB2` (Read, Notify) — notificações de peso |
+
+#### Fluxo BLE completo (React Native)
+
+```
+┌──────────────┐    BLE Scan     ┌──────────────┐     BLE GATT     ┌──────────────┐
+│  Tela        │ ──────────────▶ │   Balança    │ ◀──────────────▶ │  react-      │
+│  Balança     │                 │   KP2048B    │   FFB1/FFB2      │  native-     │
+│  Inteligente │                 │              │                  │  ble-plx     │
+└──────┬───────┘                 └──────────────┘                  └──────┬───────┘
+       │                                                                  │
+       │  Peso decodificado                                               │
+       │◀─────────────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌──────────────┐    HTTP/REST    ┌──────────────┐
+│  App envia   │ ──────────────▶ │  Django      │
+│  POST        │  /balanca-      │  Backend     │
+│  peso + mac  │  cozinha        │              │
+└──────────────┘                 └──────────────┘
+```
+
+#### Etapas da conexão BLE
+
+1. **Scan**: Ao abrir a tela, iniciar scan BLE filtrando por `serviceUUIDs: ['0000FFB0-...']` ou pelo MAC `D0:4D:00:5C:F6:36`.
+2. **Connect**: Ao encontrar o dispositivo, chamar `device.connect()`.
+3. **Discover**: Chamar `device.discoverAllServicesAndCharacteristics()`.
+4. **Handshake**: Escrever na characteristic FFB1 os comandos de ativação (em sequência):
+   ```javascript
+   const COMANDOS_ATIVACAO = [
+     'AC010000000000000000000000AC',  // init
+     'AC030000000000000000000000AE',  // start weighing
+     'AC090100000000000000000000B6',  // set unit grams
+   ];
+   // Para cada comando:
+   await characteristic.writeWithoutResponse(base64(hexToBytes(cmd)));
+   ```
+5. **Subscribe**: Monitorar notificações na characteristic FFB2:
+   ```javascript
+   device.monitorCharacteristicForService(
+     '0000FFB0-...',
+     '0000FFB2-...',
+     (error, char) => {
+       if (char?.value) {
+         const bytes = base64ToBytes(char.value);
+         const peso = decodificarPesoICOMON(bytes);
+         // peso estável → enviar ao backend
+       }
+     }
+   );
+   ```
+6. **Decodificar peso**: O pacote BLE tem 2 formatos possíveis:
+   - **14 bytes**: `bytes[3:5]` → int16 Little-Endian → dividir por 10 (resultado em gramas)
+   - **20 bytes**: `bytes[4:7]` → int24 Big-Endian → dividir por 1000 (resultado em gramas)
+   - Peso estável quando `bytes[1] === 0x40`
+7. **Enviar ao backend**: Quando o peso estabilizar, chamar `POST /api/nutricao/diario/balanca-cozinha` com `{ peso, unidade: "g", mac_balanca }`.
+
+#### 4 Estados do indicador Bluetooth
+
+| Estado | Condição | Ícone | Cor | Texto |
+|--------|----------|-------|-----|-------|
+| **Buscando** | Scan BLE ativo, dispositivo não encontrado | Bluetooth (pulsando) | Azul (`#3B82F6`) | "Buscando balança..." |
+| **Conectando** | Dispositivo encontrado, handshake em curso | Bluetooth | Amarelo (`#F59E0B`) | "Conectando..." |
+| **Conectado** | Subscription ativa em FFB2, recebendo dados | Bluetooth ✓ | Verde (`#10B981`) | "Conectado" ou "Peso: {peso}g" |
+| **Desconectado** | Scan falhou, conexão perdida, ou BLE desligado | Bluetooth ✗ | Vermelho (`#EF4444`) | "Desconectado" |
+
+#### Exemplo de lógica (pseudocódigo React Native)
+
+```javascript
+import { BleManager } from 'react-native-ble-plx';
+
+const SERVICE_UUID = '0000FFB0-0000-1000-8000-00805f9b34fb';
+const CHAR_WRITE  = '0000FFB1-0000-1000-8000-00805f9b34fb';
+const CHAR_NOTIFY = '0000FFB2-0000-1000-8000-00805f9b34fb';
+const MAC_BALANCA = 'D0:4D:00:5C:F6:36';
+
+const manager = new BleManager();
+
+// Estado 1: Buscando
+setStatus('buscando');
+manager.startDeviceScan([SERVICE_UUID], null, async (error, device) => {
+  if (error) { setStatus('desconectado'); return; }
+  if (device.id === MAC_BALANCA) {
+    manager.stopDeviceScan();
+
+    // Estado 2: Conectando
+    setStatus('conectando');
+    try {
+      const connected = await device.connect();
+      await connected.discoverAllServicesAndCharacteristics();
+
+      // Handshake: enviar comandos de ativação para FFB1
+      for (const cmd of COMANDOS_ATIVACAO) {
+        await connected.writeCharacteristicWithoutResponseForService(
+          SERVICE_UUID, CHAR_WRITE, hexToBase64(cmd)
+        );
+      }
+
+      // Estado 3: Conectado — monitorar peso em FFB2
+      setStatus('conectado');
+      connected.monitorCharacteristicForService(
+        SERVICE_UUID, CHAR_NOTIFY, (err, char) => {
+          if (err) { setStatus('desconectado'); return; }
+          const bytes = base64ToBytes(char.value);
+          if (bytes[1] === 0x40) { // peso estável
+            const peso = decodificarPeso(bytes);
+            setPesoAtual(peso);
+            enviarParaBackend(peso, MAC_BALANCA);
+          }
+        }
+      );
+    } catch (e) {
+      // Estado 4: Desconectado
+      setStatus('desconectado');
+    }
+  }
+});
+
+// Cleanup ao sair da tela
+return () => { manager.stopDeviceScan(); device?.cancelConnection(); };
+```
+
+#### Decodificação do peso (função auxiliar)
+
+```javascript
+function decodificarPeso(bytes) {
+  if (bytes.length === 14) {
+    // Formato 14B: Little-Endian decigramas
+    const raw = bytes[3] | (bytes[4] << 8);
+    return raw / 10; // gramas
+  } else if (bytes.length === 20) {
+    // Formato 20B: Big-Endian miligramas
+    const raw = (bytes[4] << 16) | (bytes[5] << 8) | bytes[6];
+    return raw / 1000; // gramas
+  }
+  return 0;
+}
+```
+
+#### Observações importantes
+
+- **`react-native-ble-plx`** requer bare workflow (sem Expo managed). Isso já está previsto na arquitetura.
+- **Permissões**: o app precisa solicitar `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT` (Android 12+) e `NSBluetoothAlwaysUsageDescription` (iOS).
+- O campo `mac_balanca` enviado no POST é o MAC real do dispositivo BLE lido pelo scan.
+- O backend também aceita `pacote_hex` (payload bruto) como alternativa ao `peso` + `unidade`, caso queira delegar a decodificação ao servidor.
+- O script Python (`scanner_balanca_icomon.py`) **não faz parte da produção** — existe apenas para testes em ambiente Linux.
+
+---
+## 2) Endpoints que a tela deve usar
+
+> Todos os endpoints abaixo exigem JWT.
+
+### 2.1 Busca de alimentos (base do app: `Alimento`)
+
+Use este endpoint para autocompletar/seleção rápida:
+
+- `GET /api/nutricao/alimentos/buscar?q=<termo>&limite=20`
+
+**Headers obrigatórios:**
+- `Authorization: Bearer <JWT>`
+
+**Parâmetros:**
+- `q` (string, obrigatório): termo de busca (nome ou marca)
+- `limite` (int, opcional, default=20)
+
+**Resposta (200):** lista de `AlimentoSchema`.
+
+Observação importante:
+- Esse endpoint busca **somente** na tabela `Alimento` (nome/marca). Se a base estiver vazia no ambiente, a resposta será `[]`.
+
+
+### 2.2 Busca de alimentos (TBCA: base ampla)
+
+Use este endpoint como **fallback** quando `alimentos/buscar` retornar vazio (ou já como fonte principal, se o produto preferir):
+
+- `GET /api/nutricao/tbca/alimentos?busca=<termo>&limite=50&offset=0`
+
+**Headers obrigatórios:**
+- `Authorization: Bearer <JWT>`
+
+**Parâmetros:**
+- `busca` (string, opcional): termo aplicado em `descricao__icontains`
+- `limite` (int, opcional, default=50)
+- `offset` (int, opcional, default=0)
+- `grupo` (string, opcional): código do grupo (ex.: `C`, `F`)
+- `fonte` (string, opcional)
+
+**Resposta (200):** lista de `AlimentoTBCAResumoSchema`.
+
+
+### 2.3 Fluxo principal da balança (entrada de peso)
+
+A tela da balança deve registrar as leituras (peso) neste endpoint:
+
+- `POST /api/nutricao/diario/balanca-cozinha`
+
+Se o frontend **não tiver alimento selecionado ainda**, o backend retorna `aguardando_alimento=true` e cria uma **pesagem pendente**.
+
+
+### 2.4 Listar fila de pesagens pendentes
+
+- `GET /api/nutricao/diario/pesagens-pendentes`
+
+Use para exibir/recuperar o “peso atual” que está aguardando alimento.
+
+
+### 2.5 Associar a pesagem a um alimento escolhido
+
+Depois que o usuário escolhe um alimento na busca, finalize a pesagem pendente:
+
+- `POST /api/nutricao/diario/pesagens-pendentes/{pesagemId}/associar`
+
+**Body:** informar **exatamente um** dos campos abaixo:
+- `alimento_id` (int) **OU**
+- `alimento_tbca_id` (UUID)
+
+Campos opcionais:
+- `refeicao_id` (int)
+- `observacao` (string)
+
+
+### 2.6 Descartar pesagem pendente
+
+Se usuário cancelar:
+
+- `DELETE /api/nutricao/diario/pesagens-pendentes/{pesagemId}`
+
+
+### 2.7 Salvar/registrar alimento no diário (fluxo manual)
+
+Se a tela precisar **registrar o consumo** diretamente no diário (fora do fluxo “pesagem pendente”), use:
+
+- `POST /api/nutricao/diario/registrar`
+
+**Headers obrigatórios:**
+- `Authorization: Bearer <JWT>`
+- `Content-Type: application/json`
+
+**Body (Schema: `RegistrarAlimentoSchema`):**
+- `alimento_id` (int, obrigatório)
+- `quantidade` (float, obrigatório) — em g/ml/unidades (depende do alimento)
+- `refeicao_id` (int, opcional)
+- `data_consumo` (datetime ISO, opcional)
+- `observacao` (string, opcional)
+
+
+### 2.8 Atalho: registrar via balança já com alimento selecionado
+
+Se o frontend já tiver **peso** e o usuário já tiver escolhido o alimento, dá para registrar em **uma chamada**:
+
+- `POST /api/nutricao/diario/balanca-cozinha`
+
+Nesse caso, envie `peso` + `unidade` **e** `alimento_id` (ou `codigo_barras`).
+O backend retorna `201` e `aguardando_alimento=false`.
+
+---
+
+## 3) Regras de integração (muito importantes)
+
+- **JWT obrigatório** em todos os endpoints acima. Sem JWT, a busca pode retornar `401` e a UI parecer “sem resultados”.
+- Não confundir parâmetros:
+  - `GET /alimentos/buscar` usa **`q`** (não é `busca`).
+  - `GET /tbca/alimentos` usa **`busca`** (não é `q`).
+- A busca `GET /api/nutricao/alimentos/buscar` consulta apenas a tabela `Alimento`.
+  - Em ambientes novos/staging, ela pode estar vazia.
+  - Nesses casos, **implementar fallback para TBCA**.
+
+### 3.1 Mapeamento de UI (base app vs TBCA)
+
+- Item da base do app (`/alimentos/buscar`):
+  - label: `nome` (pode incluir `marca` se existir)
+  - identificador: `id` (int) → usar como `alimento_id`
+- Item da TBCA (`/tbca/alimentos`):
+  - label: `descricao`
+  - identificador: `id` (UUID) → usar como `alimento_tbca_id`
+
+---
+
+## 4) Exemplos prontos (copiar/colar)
+
+### 4.1 Buscar alimento (base do app)
+
+`GET /api/nutricao/alimentos/buscar?q=frango&limite=20`
+
+Resposta (exemplo):
+```json
+[
+  {
+    "id": 1,
+    "nome": "Peito de frango",
+    "marca": "",
+    "calorias": 165,
+    "carboidratos": 0,
+    "proteinas": 31,
+    "gorduras": 3.6,
+    "fibras": 0,
+    "codigo_barras": null,
+    "unidade_medida": "G"
+  }
+]
+```
+
+### 4.2 Buscar alimento (TBCA)
+
+`GET /api/nutricao/tbca/alimentos?busca=frango&limite=50&offset=0`
+
+Resposta (exemplo):
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "codigo_tbca": "BRC0001C",
+    "descricao": "Frango, peito, sem pele, cozido",
+    "nome_cientifico": null,
+    "grupo_alimentar": {"id": "...", "codigo_tbca": "C", "nome": "Carnes e derivados"},
+    "fonte_dados": "TBCA"
+  }
+]
+```
+
+### 4.3 Registrar leitura da balança (sem alimento ainda)
+
+`POST /api/nutricao/diario/balanca-cozinha`
+
+Body (exemplo):
+```json
+{
+  "peso": 124,
+  "unidade": "g",
+  "mac_balanca": "D0:4D:00:5C:F6:36"
+}
+```
+
+Resposta típica (aguardando alimento):
+```json
+{
+  "sucesso": true,
+  "registro_id": null,
+  "alimento_nome": null,
+  "peso_original": 124,
+  "unidade_original": "g",
+  "peso_gramas": 124,
+  "calorias_consumidas": null,
+  "mensagem": "Peso 124g (124g) salvo na fila (ID #3). Associe a um alimento.",
+  "aguardando_alimento": true
+}
+```
+
+### 4.4 Listar pendências
+
+`GET /api/nutricao/diario/pesagens-pendentes`
+
+Resposta (exemplo):
+```json
+{
+  "pesagens": [
+    {
+      "id": 3,
+      "peso_original": 124.0,
+      "unidade_original": "g",
+      "peso_gramas": 124.0,
+      "status": "PENDENTE",
+      "mac_balanca": "D0:4D:00:5C:F6:36",
+      "pesado_em": "2026-02-18T10:30:00Z",
+      "associado_em": null,
+      "registro_alimentar_id": null
+    }
+  ],
+  "total": 1
+}
+```
+
+### 4.5 Associar pendência usando `alimento_id`
+
+`POST /api/nutricao/diario/pesagens-pendentes/3/associar`
+
+Body:
+```json
+{
+  "alimento_id": 1,
+  "refeicao_id": 2,
+  "observacao": "Selecionado na tela da balança"
+}
+```
+
+### 4.6 Associar pendência usando `alimento_tbca_id`
+
+`POST /api/nutricao/diario/pesagens-pendentes/3/associar`
+
+Body:
+```json
+{
+  "alimento_tbca_id": "550e8400-e29b-41d4-a716-446655440000",
+  "refeicao_id": 2,
+  "observacao": "Selecionado na TBCA"
+}
+```
+
+### 4.7 Registrar alimento manualmente no diário
+
+`POST /api/nutricao/diario/registrar`
+
+Body (exemplo):
+```json
+{
+  "alimento_id": 1,
+  "quantidade": 124,
+  "refeicao_id": 2,
+  "observacao": "Registrado manualmente na tela da balança"
+}
+```
+
+Resposta (201, exemplo):
+```json
+{
+  "id": 10,
+  "alimento_nome": "Peito de frango",
+  "quantidade": 124.0,
+  "calorias_consumidas": 204.6,
+  "mensagem": "Peito de frango registrado com sucesso"
+}
+```
+
+### 4.8 Registrar via balança já com `alimento_id` (sem pendência)
+
+`POST /api/nutricao/diario/balanca-cozinha`
+
+Body (exemplo):
+```json
+{
+  "peso": 124,
+  "unidade": "g",
+  "alimento_id": 1,
+  "refeicao_id": 2,
+  "mac_balanca": "D0:4D:00:5C:F6:36"
+}
+```
+
+Resposta típica (201, exemplo):
+```json
+{
+  "sucesso": true,
+  "registro_id": 11,
+  "alimento_nome": "Peito de frango",
+  "peso_original": 124,
+  "unidade_original": "g",
+  "peso_gramas": 124,
+  "calorias_consumidas": 204.6,
+  "mensagem": "Peito de frango (124g) registrado automaticamente",
+  "aguardando_alimento": false
+}
+```
+
+---
+
+## 5) Checklist de debug para o Replit
+
+1. Confirmar que a request de busca está indo para **o endpoint certo**:
+   - App/base: `/api/nutricao/alimentos/buscar?q=...`
+   - TBCA: `/api/nutricao/tbca/alimentos?busca=...`
+2. Confirmar que está enviando `Authorization: Bearer <JWT>`.
+3. Logar no console:
+   - URL final (com querystring)
+   - status code
+   - body retornado
+4. Se `/alimentos/buscar` estiver retornando `[]` consistentemente:
+   - Implementar fallback para `/tbca/alimentos`.
+5. Verificar se há debounce no campo de busca (evitar chamar com string vazia).
+
+---
+
+## 6) Referências no backend
+
+- Endpoint busca `Alimento`: `GET /api/nutricao/alimentos/buscar` (parâmetro `q`) — implementado em [apps/nutricao/api.py](apps/nutricao/api.py).
+- Endpoint TBCA: `GET /api/nutricao/tbca/alimentos` (parâmetro `busca`) — implementado em [apps/nutricao/api.py](apps/nutricao/api.py).
+- Fluxo balança + pendências: documentado em [docs/BALANCA_COZINHA.md](docs/BALANCA_COZINHA.md).
