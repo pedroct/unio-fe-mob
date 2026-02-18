@@ -1,7 +1,7 @@
 import Layout from "@/components/layout";
 import { ChevronLeft, Camera, Settings, LogOut, AlertCircle, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
@@ -10,17 +10,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 interface StagingProfile {
   id: number;
   usuario_id: number;
-  tipo: string | null;
+  tipo: string;
   altura_cm: number | null;
-  peso_meta_kg: number | null;
-  objetivo: string | null;
   data_nascimento: string | null;
   sexo: string | null;
-  foto_url: string | null;
+  objetivo: string | null;
+  foto_url: string;
   mac_balanca: string | null;
-  idade: number | null;
-  fator_atividade: string | null;
+  fator_atividade: string;
   meta_calorias: number | null;
+  idade: number;
   criado_em: string;
 }
 
@@ -83,6 +82,7 @@ export default function ProfileScreen() {
     meta_calorias: "",
   });
   const [metaMode, setMetaMode] = useState<"auto" | "manual">("auto");
+  const skipNextSync = useRef(false);
 
   const profileQuery = useQuery<StagingProfile>({
     queryKey: ["profile"],
@@ -108,6 +108,10 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (profileQuery.data) {
+      if (skipNextSync.current) {
+        skipNextSync.current = false;
+        return;
+      }
       const p = profileQuery.data;
       setForm((prev) => ({
         ...prev,
@@ -149,22 +153,11 @@ export default function ProfileScreen() {
       return profileData as StagingProfile;
     },
     onSuccess: async (data) => {
-      console.log("[profile] PATCH response:", JSON.stringify(data));
       setFieldErrors({});
+      skipNextSync.current = true;
       queryClient.setQueryData(["profile"], data);
       queryClient.invalidateQueries({ queryKey: ["nutricao"] });
       await refreshUser();
-      setForm((prev) => ({
-        ...prev,
-        altura_cm: data.altura_cm ? String(data.altura_cm) : "",
-        data_nascimento: data.data_nascimento || "",
-        sexo: data.sexo || "",
-        objetivo: data.objetivo || "",
-        fator_atividade: data.fator_atividade || "",
-        meta_calorias: data.meta_calorias && data.meta_calorias > 0 ? String(data.meta_calorias) : "",
-      }));
-      setBirthDateDisplay(isoToDisplay(data.data_nascimento));
-      setMetaMode(data.meta_calorias && data.meta_calorias > 0 ? "manual" : "auto");
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     },

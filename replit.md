@@ -44,7 +44,7 @@ Preferred communication style: Simple, everyday language.
 - **Logout:** POST `/api/auth/blacklist` with `{refresh}` in body
 - **Register:** POST `/api/nucleo/registrar` with `{email, password, username}`
 - **User data:** GET `/api/nucleo/eu` → UsuarioSchema `{id: int, email, username, first_name, last_name, is_active, criado_em}`
-- **Profile:** GET/PATCH `/api/nucleo/perfil` → PerfilSchema `{id, usuario_id, tipo, altura_cm, peso_meta_kg, objetivo, data_nascimento, sexo, foto_url, mac_balanca, idade, fator_atividade, meta_calorias, criado_em}`
+- **Profile:** GET/PATCH `/api/nucleo/perfil` → PerfilSchema `{id, usuario_id, tipo, altura_cm, data_nascimento, sexo, objetivo, foto_url, mac_balanca, fator_atividade, meta_calorias, idade, criado_em}`
   - `meta_calorias`: when set and > 0, backend uses as manual caloric goal (`fonte_dados = "perfil"`, no deficit applied). When `null` or `0`, backend uses automatic calculation (`fonte_dados = "xiaomi"` or `"estimativa"`)
   - `fator_atividade`: one of `sedentario`, `levemente_ativo`, `moderadamente_ativo`, `muito_ativo`, `extremamente_ativo`
 - **Frontend token storage:** Access token in-memory (never localStorage), refresh token in localStorage (MVP — production mobile should use Keychain)
