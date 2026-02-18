@@ -1116,7 +1116,7 @@ function CreateProtocoloModal({
         <div className="sticky top-0 bg-[#FAFBF8] px-6 pt-6 pb-4 border-b border-[#E8EBE5] z-10">
           <div className="flex items-center justify-between mb-1">
             <h2 className="font-display text-lg font-semibold text-[#2F5641]">
-              Novo Protocolo
+              Novo Protocolo de Suplementação
             </h2>
             <button
               onClick={onClose}
@@ -1131,35 +1131,41 @@ function CreateProtocoloModal({
         <div className="px-6 py-4 space-y-4">
           <div>
             <label className="text-xs font-semibold text-[#2F5641] mb-1 block">
-              Nome do protocolo *
+              Nome do protocolo
             </label>
             <input
               type="text"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              placeholder="Ex: Protocolo Diário"
+              placeholder="Ex.: Recuperação muscular, Imunidade, Foco"
               className="w-full px-4 py-3 rounded-xl border border-[#E8EBE5] bg-white text-sm text-[#2F5641] placeholder-[#8B9286]/60 focus:outline-none focus:ring-2 focus:ring-[#2F5641]/20"
               data-testid="input-protocolo-nome"
             />
+            <p className="text-[10px] text-[#8B9286] mt-1.5 px-1">
+              Dê um nome que identifique o objetivo geral do protocolo.
+            </p>
           </div>
 
           <div>
             <label className="text-xs font-semibold text-[#2F5641] mb-1 block">
-              Objetivo
+              Objetivo (opcional)
             </label>
             <input
               type="text"
               value={objetivo}
               onChange={(e) => setObjetivo(e.target.value)}
-              placeholder="Ex: Saúde geral"
+              placeholder="Ex.: Reduzir inflamação pós-treino e acelerar recuperação"
               className="w-full px-4 py-3 rounded-xl border border-[#E8EBE5] bg-white text-sm text-[#2F5641] placeholder-[#8B9286]/60 focus:outline-none focus:ring-2 focus:ring-[#2F5641]/20"
               data-testid="input-protocolo-objetivo"
             />
+            <p className="text-[10px] text-[#8B9286] mt-1.5 px-1">
+              Descreva o que você quer alcançar com este conjunto de suplementos.
+            </p>
           </div>
 
           <div>
             <label className="text-xs font-semibold text-[#2F5641] mb-1 block">
-              Data de início
+              Início do protocolo
             </label>
             <input
               type="date"
@@ -1168,6 +1174,9 @@ function CreateProtocoloModal({
               className="w-full px-4 py-3 rounded-xl border border-[#E8EBE5] bg-white text-sm text-[#2F5641] focus:outline-none focus:ring-2 focus:ring-[#2F5641]/20"
               data-testid="input-protocolo-data-inicio"
             />
+            <p className="text-[10px] text-[#8B9286] mt-1.5 px-1">
+              O protocolo só começa a aparecer na sua agenda a partir desta data.
+            </p>
           </div>
 
           <div>
@@ -1181,10 +1190,17 @@ function CreateProtocoloModal({
                 data-testid="button-add-item"
               >
                 <Plus size={14} />
-                Adicionar
+                Adicionar suplemento
               </button>
             </div>
 
+            {itens.length === 0 ? (
+              <div className="py-6 text-center">
+                <p className="text-xs text-[#8B9286]">
+                  Nenhum suplemento adicionado ainda. Clique em "+ Adicionar suplemento" para começar.
+                </p>
+              </div>
+            ) : (
             <div className="space-y-4">
               {itens.map((item, idx) => (
                 <div
@@ -1211,20 +1227,24 @@ function CreateProtocoloModal({
                     type="text"
                     value={item.suplemento_nome}
                     onChange={(e) => updateItem(idx, "suplemento_nome", e.target.value)}
-                    placeholder="Nome do suplemento *"
+                    placeholder="Nome do suplemento (ex.: Creatina, Vitamina D)"
                     className="w-full px-3 py-2 rounded-lg border border-[#E8EBE5] text-sm text-[#2F5641] placeholder-[#8B9286]/60 focus:outline-none focus:ring-2 focus:ring-[#2F5641]/20"
                     data-testid={`input-item-nome-${idx}`}
                   />
 
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={item.dosagem}
-                      onChange={(e) => updateItem(idx, "dosagem", e.target.value)}
-                      placeholder="Dosagem *"
-                      className="flex-1 px-3 py-2 rounded-lg border border-[#E8EBE5] text-sm text-[#2F5641] placeholder-[#8B9286]/60 focus:outline-none focus:ring-2 focus:ring-[#2F5641]/20"
-                      data-testid={`input-item-dosagem-${idx}`}
-                    />
+                  <input
+                    type="text"
+                    value={item.dosagem}
+                    onChange={(e) => updateItem(idx, "dosagem", e.target.value)}
+                    placeholder="Dosagem (ex.: 5g, 500mg, 1 cápsula)"
+                    className="w-full px-3 py-2 rounded-lg border border-[#E8EBE5] text-sm text-[#2F5641] placeholder-[#8B9286]/60 focus:outline-none focus:ring-2 focus:ring-[#2F5641]/20"
+                    data-testid={`input-item-dosagem-${idx}`}
+                  />
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-[#8B9286] mb-1 block">
+                      Unidades por dose
+                    </label>
                     <input
                       type="number"
                       min={1}
@@ -1232,17 +1252,19 @@ function CreateProtocoloModal({
                       onChange={(e) =>
                         updateItem(idx, "quantidade_por_dose", Math.max(1, parseInt(e.target.value) || 1))
                       }
-                      placeholder="Qtd"
-                      className="w-16 px-3 py-2 rounded-lg border border-[#E8EBE5] text-sm text-[#2F5641] text-center focus:outline-none focus:ring-2 focus:ring-[#2F5641]/20"
+                      className="w-20 px-3 py-2 rounded-lg border border-[#E8EBE5] text-sm text-[#2F5641] text-center focus:outline-none focus:ring-2 focus:ring-[#2F5641]/20"
                       data-testid={`input-item-qtd-${idx}`}
                     />
+                    <p className="text-[10px] text-[#8B9286] mt-1 px-1">
+                      Quantas unidades você toma de uma vez? (padrão: 1)
+                    </p>
                   </div>
 
                   <input
                     type="text"
                     value={item.instrucoes}
                     onChange={(e) => updateItem(idx, "instrucoes", e.target.value)}
-                    placeholder="Instruções (opcional)"
+                    placeholder="Instruções opcionais (ex.: Tomar com refeição, evitar em jejum)"
                     className="w-full px-3 py-2 rounded-lg border border-[#E8EBE5] text-sm text-[#2F5641] placeholder-[#8B9286]/60 focus:outline-none focus:ring-2 focus:ring-[#2F5641]/20"
                     data-testid={`input-item-instrucoes-${idx}`}
                   />
@@ -1250,14 +1272,14 @@ function CreateProtocoloModal({
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-[10px] font-semibold text-[#8B9286]">
-                        Horários
+                        Horários de ingestão
                       </span>
                       <button
                         onClick={() => addHorario(idx)}
                         className="text-[10px] font-semibold text-[#C7AE6A]"
                         data-testid={`button-add-horario-${idx}`}
                       >
-                        + Horário
+                        + Adicionar horário
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1282,26 +1304,39 @@ function CreateProtocoloModal({
                         </div>
                       ))}
                     </div>
+                    <p className="text-[10px] text-[#8B9286] mt-1.5 px-1">
+                      Defina os horários em que este suplemento deve ser tomado. Você receberá lembretes conforme a agenda do dia.
+                    </p>
                   </div>
                 </div>
               ))}
             </div>
+            )}
           </div>
         </div>
 
         <div className="sticky bottom-0 bg-[#FAFBF8] px-6 py-4 border-t border-[#E8EBE5]">
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit || isPending}
-            className="w-full py-3.5 rounded-xl bg-[#2F5641] text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-sm shadow-[#2F5641]/20 active:scale-[0.98] transition-all disabled:opacity-40"
-            data-testid="button-submit-protocolo"
-          >
-            {isPending ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              "Criar Protocolo"
-            )}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3.5 rounded-xl border border-[#E8EBE5] bg-white text-[#2F5641] text-sm font-semibold active:scale-[0.98] transition-all"
+              data-testid="button-cancel-protocolo"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit || isPending}
+              className="flex-[2] py-3.5 rounded-xl bg-[#2F5641] text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-sm shadow-[#2F5641]/20 active:scale-[0.98] transition-all disabled:opacity-40"
+              data-testid="button-submit-protocolo"
+            >
+              {isPending ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                "Salvar protocolo"
+              )}
+            </button>
+          </div>
         </div>
       </motion.div>
     </motion.div>
