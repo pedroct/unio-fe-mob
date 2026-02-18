@@ -1,0 +1,93 @@
+# Pendências Frontend — Balança Inteligente
+
+**Data:** 18/02/2026
+**Módulo:** Nutrição → Balança Inteligente
+**Destinatário:** Frontend (Replit)
+**Backend:** nenhuma ação necessária
+
+---
+
+## Correção 1 — Label "QUANTIDADE (G)" em ALL CAPS
+
+**Problema:** o label do campo de entrada manual de quantidade está em caixa alta, inconsistente com o padrão de sentence case adotado no restante do app.
+
+**Label atual:**
+```
+QUANTIDADE (G)
+```
+
+**Label corrigido:**
+```
+Quantidade (g)
+```
+
+**Regra:** labels de campos de formulário seguem sentence case. A unidade entre parênteses permanece em minúsculo — `(g)` e não `(G)`.
+
+---
+
+## Correção 2 — Fonte e truncamento do nome do alimento no card
+
+**Problema:** o nome do alimento no card de confirmação está sendo truncado em posição que deixa parênteses abertos sem fechamento.
+
+Exemplo atual:
+```
+Carne, peito de frango, c/ molho branco (molho...
+```
+
+**Solução:** reduzir o tamanho da fonte e permitir até 2 linhas com truncamento via CSS `line-clamp`. Isso elimina o problema de parênteses abertos sem necessidade de lógica de string no JavaScript.
+
+**Especificação tipográfica:**
+
+| Propriedade | Valor atual | Valor corrigido |
+|---|---|---|
+| `font-size` | `16px` | `13px` |
+| `font-weight` | `semibold` | `medium` (500) |
+| Linhas máximas | 1 | 2 |
+| Overflow | truncate JS | `line-clamp` CSS |
+
+**CSS a aplicar no elemento do nome do alimento dentro do card:**
+
+```css
+.selected-food-name {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+```
+
+**Resultado esperado:**
+```
+Carne, peito de frango, c/ molho branco
+(molho à base de leite desnatado)
+```
+
+**Escopo:** aplicar apenas no card de alimento selecionado. A lista de busca mantém o comportamento atual de 1 linha.
+
+---
+
+## Correção 3 — Ícone de lupa no estado vazio inicial
+
+**Problema:** quando nenhum alimento foi selecionado e o campo de busca está vazio, a tela exibe um ícone de lupa com o texto `"Selecione um alimento para registrar"`. O ícone de lupa é semanticamente incorreto — representa busca, mas o estado comunica aguardando seleção. O campo de busca acima já cumpre o papel de busca.
+
+**Solução — Opção A (recomendada):** remover o ícone e manter apenas o texto centralizado.
+
+```
+Selecione um alimento para registrar
+```
+
+Cor: `--color-text-tertiary`, sem ícone.
+
+**Solução — Opção B:** substituir pelo ícone de prato ou garfo da biblioteca de ícones já utilizada no projeto.
+
+---
+
+## Checklist de aceitação
+
+- [ ] Label exibe "Quantidade (g)" em sentence case com unidade em minúsculo
+- [ ] Nome do alimento no card com `font-size: 13px`, `font-weight: 500`, `line-clamp: 2`
+- [ ] Truncamento via CSS — sem parêntese aberto sem fechamento
+- [ ] Estado vazio inicial não exibe ícone de lupa
