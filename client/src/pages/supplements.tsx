@@ -1111,9 +1111,9 @@ function CreateProtocoloModal({
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="relative w-full max-w-[430px] bg-[#FAFBF8] rounded-t-3xl max-h-[85vh] overflow-y-auto"
+        className="relative w-full max-w-[430px] bg-[#FAFBF8] rounded-t-3xl max-h-[85vh] flex flex-col"
       >
-        <div className="sticky top-0 bg-[#FAFBF8] px-6 pt-6 pb-4 border-b border-[#E8EBE5] z-10">
+        <div className="shrink-0 bg-[#FAFBF8] px-6 pt-6 pb-4 border-b border-[#E8EBE5] rounded-t-3xl">
           <div className="flex items-center justify-between mb-1">
             <h2 className="font-display text-lg font-semibold text-[#2F5641]">
               Novo Protocolo de Suplementação
@@ -1128,7 +1128,7 @@ function CreateProtocoloModal({
           </div>
         </div>
 
-        <div className="px-6 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div>
             <label className="text-xs font-semibold text-[#2F5641] mb-1 block">
               Nome do protocolo
@@ -1315,7 +1315,7 @@ function CreateProtocoloModal({
           </div>
         </div>
 
-        <div className="sticky bottom-0 bg-[#FAFBF8] px-6 py-4 border-t border-[#E8EBE5]">
+        <div className="shrink-0 bg-[#FAFBF8] px-6 py-4 border-t border-[#E8EBE5]">
           <div className="flex gap-3">
             <button
               onClick={onClose}
