@@ -1,36 +1,54 @@
 import Layout from "@/components/layout";
-import { ChevronLeft, Bluetooth, Scale, Check, RefreshCw, Plus, Search, X, Loader2 } from "lucide-react";
+import { ChevronLeft, Bluetooth, Check, RefreshCw, Plus, Search, X, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
-import { useSyncEngine } from "@/lib/sync-engine";
+import { useToast } from "@/hooks/use-toast";
 
-interface FoodItem {
-  id: string;
-  name: string;
-  caloriesKcal: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
-  servingSizeG: number;
+interface AlimentoItem {
+  id: number;
+  nome: string;
+  marca: string;
+  codigo_barras: string | null;
+  calorias: number;
+  carboidratos: number;
+  proteinas: number;
+  gorduras: number;
+  fibras: number;
+  unidade_medida: string;
 }
 
 export default function NutritionScaleScreen() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [connectionStatus, setConnectionStatus] = useState<"searching" | "connected" | "disconnected">("searching");
   const [weight, setWeight] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedFood, setSelectedFood] = useState<AlimentoItem | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const queryClient = useQueryClient();
-  const syncEngine = useSyncEngine();
 
-  const { data: foods = [], isLoading: foodsLoading } = useQuery<FoodItem[]>({
-    queryKey: ["/api/foods"],
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const { data: foods = [], isLoading: foodsLoading } = useQuery<AlimentoItem[]>({
+    queryKey: ["nutricao", "alimentos", "buscar", debouncedSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      params.set("limite", "30");
+      const res = await apiFetch(`/api/nutricao/alimentos/buscar?${params.toString()}`);
+      if (!res.ok) throw new Error("Erro ao buscar alimentos");
+      return res.json();
+    },
+    enabled: !!user && debouncedSearch.length >= 2,
   });
 
   useEffect(() => {
@@ -40,50 +58,42 @@ export default function NutritionScaleScreen() {
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    if (connectionStatus === "connected" && weight === 0) {
-      const timer = setTimeout(() => {
-        setWeight(124);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [connectionStatus, weight]);
-
-  const filteredFoods = foods.filter((f: FoodItem) =>
-    f.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   const currentStats = selectedFood ? {
-    kcal: Math.round((weight / selectedFood.servingSizeG) * selectedFood.caloriesKcal),
-    protein: Math.round((weight / selectedFood.servingSizeG) * selectedFood.proteinG * 10) / 10,
-    carbs: Math.round((weight / selectedFood.servingSizeG) * selectedFood.carbsG * 10) / 10,
-    fat: Math.round((weight / selectedFood.servingSizeG) * selectedFood.fatG * 10) / 10,
+    kcal: Math.round(selectedFood.calorias * (weight / 100)),
+    protein: Math.round(selectedFood.proteinas * (weight / 100) * 10) / 10,
+    carbs: Math.round(selectedFood.carboidratos * (weight / 100) * 10) / 10,
+    fat: Math.round(selectedFood.gorduras * (weight / 100) * 10) / 10,
   } : { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
-  const handleConfirm = async () => {
-    if (!selectedFood || weight === 0) return;
-
-    try {
-      const userId = String(user?.id ?? "");
-      if (!userId) {
-        throw new Error("Usuário não autenticado");
-      }
-
-      syncEngine.pushChange("body_records", "create", {
-        userId,
-        weightKg: weight / 1000,
-        source: "smart_scale",
-        measuredAt: new Date().toISOString(),
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedFood || weight === 0) throw new Error("Selecione um alimento e peso");
+      const res = await apiFetch("/api/nutricao/diario/registrar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alimento_id: selectedFood.id,
+          quantidade: weight,
+        }),
       });
-
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.mensagem || data.detail || "Erro ao registrar alimento.");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["nutricao"] });
       setSaveSuccess(true);
+      toast({ title: "Alimento registrado", description: data.mensagem || `${selectedFood?.nome} adicionado` });
       setTimeout(() => {
         setLocation("/nutrition");
       }, 1500);
-    } catch (err) {
-      console.error("Failed to save:", err);
-    }
-  };
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    },
+  });
 
   return (
     <Layout>
@@ -197,31 +207,32 @@ export default function NutritionScaleScreen() {
                   {foodsLoading ? (
                     <div className="text-center py-8">
                       <Loader2 size={24} className="animate-spin mx-auto text-[#8B9286]" />
-                      <p className="text-xs text-[#8B9286] mt-2">Carregando alimentos...</p>
+                      <p className="text-xs text-[#8B9286] mt-2">Buscando alimentos...</p>
                     </div>
-                  ) : searchQuery.length > 0 ? (
-                    filteredFoods.map((food: FoodItem) => (
+                  ) : searchQuery.length >= 2 && foods.length > 0 ? (
+                    foods.map((food: AlimentoItem) => (
                       <button
                         key={food.id}
                         data-testid={`button-food-${food.id}`}
                         onClick={() => setSelectedFood(food)}
                         className="w-full text-left p-3 rounded-xl hover:bg-[#FAFBF8] border border-transparent hover:border-[#E8EBE5] transition-all flex justify-between items-center group"
                       >
-                        <span className="font-medium text-[#2F5641] text-sm">{food.name}</span>
+                        <div>
+                          <span className="font-medium text-[#2F5641] text-sm block">{food.nome}</span>
+                          {food.marca && <span className="text-[10px] text-[#8B9286]">{food.marca}</span>}
+                        </div>
                         <Plus size={16} className="text-[#C7AE6A] opacity-0 group-hover:opacity-100 transition-opacity" />
                       </button>
                     ))
+                  ) : searchQuery.length >= 2 && foods.length === 0 && !foodsLoading ? (
+                    <div className="text-center py-8 opacity-60">
+                      <Search size={32} className="mx-auto mb-2 text-[#8B9286]" />
+                      <p className="text-xs text-[#8B9286]">Nenhum alimento encontrado para "{searchQuery}"</p>
+                    </div>
                   ) : (
                     <div className="text-center py-8 opacity-40">
                       <Search size={32} className="mx-auto mb-2 text-[#8B9286]" />
                       <p className="text-xs text-[#8B9286]">Digite para buscar na base de dados</p>
-                    </div>
-                  )}
-
-                  {syncEngine.isSyncing && (
-                    <div className="text-center py-2">
-                      <Loader2 size={14} className="animate-spin inline mr-1 text-[#C7AE6A]" />
-                      <span className="text-xs text-[#8B9286]">Sincronizando...</span>
                     </div>
                   )}
                 </div>
@@ -231,7 +242,7 @@ export default function NutritionScaleScreen() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] block mb-0.5">Alimento Selecionado</span>
-                    <h3 data-testid="text-selected-food" className="font-semibold text-[#2F5641] text-lg leading-tight">{selectedFood.name}</h3>
+                    <h3 data-testid="text-selected-food" className="font-semibold text-[#2F5641] text-lg leading-tight">{selectedFood.nome}</h3>
                   </div>
                   <button
                     data-testid="button-clear-food"
@@ -263,11 +274,15 @@ export default function NutritionScaleScreen() {
 
                 <button
                   data-testid="button-confirm"
-                  disabled={weight === 0}
-                  onClick={handleConfirm}
+                  disabled={weight === 0 || addMutation.isPending}
+                  onClick={() => addMutation.mutate()}
                   className="w-full bg-[#2F5641] disabled:bg-[#E8EBE5] disabled:text-[#8B9286] text-white py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-[#2F5641]/20 flex items-center justify-center gap-2 active:scale-[0.98] transition-all mt-auto mb-6"
                 >
-                  <Plus size={20} /> Confirmar {weight}g
+                  {addMutation.isPending ? (
+                    <><Loader2 size={20} className="animate-spin" /> Registrando...</>
+                  ) : (
+                    <><Plus size={20} /> Confirmar {weight}g</>
+                  )}
                 </button>
               </div>
             )}
