@@ -1,7 +1,7 @@
 import Layout from "@/components/layout";
 import { ChevronLeft, Bluetooth, Check, RefreshCw, Plus, Search, X, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
@@ -56,18 +56,29 @@ function getFoodSubtitle(food: SelectedFood): string | null {
   return null;
 }
 
+function smartTruncate(text: string, maxLen: number = 48): string {
+  if (text.length <= maxLen) return text;
+  const trimmed = text.slice(0, maxLen);
+  const lastSpace = trimmed.lastIndexOf(" ");
+  if (lastSpace <= 0) return trimmed + "\u2026";
+  return trimmed.slice(0, lastSpace) + "\u2026";
+}
+
 export default function NutritionScaleScreen() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [connectionStatus, setConnectionStatus] = useState<"searching" | "connected" | "disconnected">("searching");
   const [weight, setWeight] = useState(0);
+  const [manualWeight, setManualWeight] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedFood, setSelectedFood] = useState<SelectedFood | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [pendingPesagemId, setPendingPesagemId] = useState<number | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
@@ -111,6 +122,7 @@ export default function NutritionScaleScreen() {
       const latest = pendingData.pesagens[0];
       if (latest.status === "PENDENTE") {
         setWeight(Math.round(latest.peso_gramas));
+        setManualWeight(String(Math.round(latest.peso_gramas)));
         setPendingPesagemId(latest.id);
       }
     }
@@ -125,7 +137,7 @@ export default function NutritionScaleScreen() {
 
   const isSearching = appFoodsLoading || tbcaFoodsLoading;
   const hasFoods = appFoods.length > 0 || tbcaFoods.length > 0;
-  const showingTBCA = appFoods.length === 0 && tbcaFoods.length > 0;
+  const hasAppAndTbca = appFoods.length > 0 && tbcaFoods.length > 0;
 
   const currentStats = selectedFood?.source === "app" ? {
     kcal: Math.round(selectedFood.data.calorias * (weight / 100)),
@@ -211,10 +223,45 @@ export default function NutritionScaleScreen() {
     onSuccess: () => {
       setPendingPesagemId(null);
       setWeight(0);
+      setManualWeight("");
       queryClient.invalidateQueries({ queryKey: ["nutricao", "pesagens-pendentes"] });
       toast({ title: "Pesagem descartada" });
     },
   });
+
+  const openSearch = () => {
+    setSearchOpen(true);
+    setTimeout(() => searchInputRef.current?.focus(), 100);
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setDebouncedSearch("");
+  };
+
+  const selectFood = (food: SelectedFood) => {
+    setSelectedFood(food);
+    closeSearch();
+  };
+
+  const handleManualWeightChange = (val: string) => {
+    const cleaned = val.replace(/[^0-9]/g, "");
+    setManualWeight(cleaned);
+    const num = parseInt(cleaned, 10);
+    setWeight(isNaN(num) ? 0 : num);
+  };
+
+  const foodLabelTruncated = selectedFood ? smartTruncate(getFoodLabel(selectedFood)) : "";
+
+  useEffect(() => {
+    if (searchOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [searchOpen]);
 
   return (
     <Layout>
@@ -287,11 +334,18 @@ export default function NutritionScaleScreen() {
               </svg>
             </div>
 
-            <div className="flex items-center gap-3 mt-6">
+            {selectedFood && weight === 0 && (
+              <p className="text-xs text-[#8B9286] mt-3 text-center">
+                Coloque o alimento na balança para registrar
+              </p>
+            )}
+
+            <div className="flex items-center gap-3 mt-4">
               <button
                 data-testid="button-tare"
                 onClick={() => {
                   setWeight(0);
+                  setManualWeight("");
                   if (pendingPesagemId) {
                     discardMutation.mutate(pendingPesagemId);
                   }
@@ -323,88 +377,32 @@ export default function NutritionScaleScreen() {
               </motion.div>
             ) : !selectedFood ? (
               <div className="flex-1 flex flex-col">
-                <div className="relative mb-4">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8B9286]" size={18} />
-                  <input
-                    data-testid="input-food-search"
-                    type="text"
-                    placeholder="Buscar alimento (ex: Frango)"
-                    className="w-full bg-[#FAFBF8] border border-[#E8EBE5] rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-[#2F5641] transition-colors"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    autoFocus
-                  />
-                </div>
+                <button
+                  data-testid="button-open-search"
+                  onClick={openSearch}
+                  className="w-full bg-[#FAFBF8] border border-[#E8EBE5] rounded-xl py-3 px-4 text-sm text-left text-[#8B9286] flex items-center gap-2 mb-4"
+                >
+                  <Search size={18} className="text-[#8B9286] shrink-0" />
+                  Buscar alimento…
+                </button>
 
-                <div className="flex-1 overflow-y-auto space-y-1 pb-6">
-                  {isSearching ? (
-                    <div className="text-center py-8">
-                      <Loader2 size={24} className="animate-spin mx-auto text-[#8B9286]" />
-                      <p className="text-xs text-[#8B9286] mt-2">Buscando alimentos...</p>
-                    </div>
-                  ) : debouncedSearch.length >= 2 && hasFoods ? (
-                    <>
-                      {showingTBCA && (
-                        <p className="text-[10px] text-[#8B9286] mb-2 px-1">Resultados da base TBCA</p>
-                      )}
-                      {appFoods.map((food) => (
-                        <button
-                          key={`app-${food.id}`}
-                          data-testid={`button-food-app-${food.id}`}
-                          onClick={() => setSelectedFood({ source: "app", data: food })}
-                          className="w-full text-left p-3 rounded-xl hover:bg-[#FAFBF8] border border-transparent hover:border-[#E8EBE5] transition-all flex justify-between items-center group"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <span className="font-medium text-[#2F5641] text-sm block truncate">{food.nome}</span>
-                            {food.marca && <span className="text-[10px] text-[#8B9286]">{food.marca}</span>}
-                            <span className="text-[10px] text-[#648D4A] ml-1">{food.calorias} kcal/100g</span>
-                          </div>
-                          <Plus size={16} className="text-[#C7AE6A] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2" />
-                        </button>
-                      ))}
-                      {tbcaFoods.map((food) => (
-                        <button
-                          key={`tbca-${food.id}`}
-                          data-testid={`button-food-tbca-${food.id}`}
-                          onClick={() => setSelectedFood({ source: "tbca", data: food })}
-                          className="w-full text-left p-3 rounded-xl hover:bg-[#FAFBF8] border border-transparent hover:border-[#E8EBE5] transition-all flex justify-between items-center group"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <span className="font-medium text-[#2F5641] text-sm block truncate">{food.descricao}</span>
-                            {food.grupo_alimentar && (
-                              <span className="text-[10px] text-[#8B9286]">{food.grupo_alimentar.nome}</span>
-                            )}
-                            <span className="text-[10px] text-[#C7AE6A] ml-1">TBCA</span>
-                          </div>
-                          <Plus size={16} className="text-[#C7AE6A] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2" />
-                        </button>
-                      ))}
-                    </>
-                  ) : debouncedSearch.length >= 2 && !hasFoods && !isSearching ? (
-                    <div className="text-center py-8 opacity-60">
-                      <Search size={32} className="mx-auto mb-2 text-[#8B9286]" />
-                      <p className="text-xs text-[#8B9286]">Nenhum alimento encontrado para "{searchQuery}"</p>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 opacity-40">
-                      <Search size={32} className="mx-auto mb-2 text-[#8B9286]" />
-                      <p className="text-xs text-[#8B9286]">Digite ao menos 2 letras para buscar</p>
-                    </div>
-                  )}
+                <div className="flex-1 flex flex-col items-center justify-center opacity-40">
+                  <Search size={32} className="mb-2 text-[#8B9286]" />
+                  <p className="text-xs text-[#8B9286]">Selecione um alimento para registrar</p>
                 </div>
               </div>
             ) : (
               <div className="flex-1 flex flex-col">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex-1 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] block mb-0.5">
-                      Alimento selecionado{selectedFood.source === "tbca" ? " (TBCA)" : ""}
+                    <span className="text-[10px] font-medium tracking-wider text-[#8B9286] block mb-0.5">
+                      Alimento selecionado
                     </span>
-                    <h3 data-testid="text-selected-food" className="font-semibold text-[#2F5641] text-lg leading-tight truncate">
-                      {getFoodLabel(selectedFood)}
+                    <h3 data-testid="text-selected-food" className="font-semibold text-[#2F5641] text-lg leading-tight">
+                      {smartTruncate(getFoodLabel(selectedFood))}
                     </h3>
                     {getFoodSubtitle(selectedFood) && (
-                      <p className="text-xs text-[#8B9286] truncate">{getFoodSubtitle(selectedFood)}</p>
+                      <p className="text-xs text-[#8B9286]">{getFoodSubtitle(selectedFood)}</p>
                     )}
                   </div>
                   <button
@@ -416,8 +414,8 @@ export default function NutritionScaleScreen() {
                   </button>
                 </div>
 
-                {selectedFood.source === "app" && (
-                  <div className="grid grid-cols-4 gap-2 text-center mb-6">
+                {selectedFood.source === "app" && weight > 0 && (
+                  <div className="grid grid-cols-4 gap-2 text-center mb-4">
                     <div className="bg-[#FAFBF8] rounded-xl p-2 border border-[#E8EBE5]">
                       <span data-testid="text-stat-kcal" className="block text-lg font-bold text-[#2F5641]">{currentStats.kcal}</span>
                       <span className="text-[9px] uppercase font-bold text-[#8B9286]">Kcal</span>
@@ -437,44 +435,160 @@ export default function NutritionScaleScreen() {
                   </div>
                 )}
 
-                {selectedFood.source === "tbca" && (
-                  <div className="bg-[#FAFBF8] rounded-xl p-3 border border-[#E8EBE5] mb-6">
-                    <p className="text-xs text-[#8B9286]">
-                      Alimento da base TBCA — os macros serão calculados pelo servidor ao registrar.
-                    </p>
-                  </div>
-                )}
+                <div className="pt-2 pb-4">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#8B9286] block mb-2">
+                    Quantidade (g)
+                  </label>
+                  <input
+                    data-testid="input-manual-weight-selected"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={manualWeight}
+                    onChange={(e) => handleManualWeightChange(e.target.value)}
+                    className="w-full bg-[#FAFBF8] border border-[#E8EBE5] rounded-xl py-3 px-4 text-sm text-[#2F5641] font-medium focus:outline-none focus:border-[#2F5641] transition-colors text-center tabular-nums"
+                  />
+                </div>
 
                 <button
                   data-testid="button-confirm"
                   disabled={weight === 0 || confirmMutation.isPending}
                   onClick={() => confirmMutation.mutate()}
-                  className="w-full bg-[#2F5641] disabled:bg-[#E8EBE5] disabled:text-[#8B9286] text-white py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-[#2F5641]/20 flex items-center justify-center gap-2 active:scale-[0.98] transition-all mt-auto mb-6"
+                  className="w-full bg-[#2F5641] disabled:bg-[#E8EBE5] disabled:text-[#8B9286] text-white py-4 rounded-2xl font-semibold text-base shadow-xl shadow-[#2F5641]/20 flex items-center justify-center gap-2 active:scale-[0.98] transition-all mt-auto mb-6"
                 >
                   {confirmMutation.isPending ? (
-                    <><Loader2 size={20} className="animate-spin" /> Registrando...</>
+                    <><Loader2 size={20} className="animate-spin" /> Registrando…</>
                   ) : weight === 0 ? (
-                    <>Informe o peso para confirmar</>
+                    <>Coloque o alimento na balança</>
                   ) : (
-                    <><Plus size={20} /> Confirmar {weight} g</>
+                    <><Check size={20} /> Registrar {foodLabelTruncated}</>
                   )}
                 </button>
               </div>
             )}
-
-            <div className="pb-4 opacity-30 hover:opacity-100 transition-opacity">
-              <input
-                data-testid="slider-weight"
-                type="range"
-                min="0"
-                max="500"
-                value={weight}
-                onChange={(e) => setWeight(parseInt(e.target.value))}
-                className="w-full accent-[#2F5641] h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
           </div>
         </main>
+
+        <AnimatePresence>
+          {searchOpen && (
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className="fixed inset-0 top-[env(safe-area-inset-top,0px)] bg-[#FAFBF8] z-[60] flex flex-col"
+            >
+              <div className="px-4 pt-4 pb-3 flex items-center gap-3 shrink-0 border-b border-[#E8EBE5]">
+                <button
+                  data-testid="button-close-search"
+                  onClick={closeSearch}
+                  className="w-10 h-10 flex items-center justify-center text-[#2F5641] shrink-0"
+                >
+                  <ChevronLeft size={24} />
+                </button>
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8B9286]" size={18} />
+                  <input
+                    ref={searchInputRef}
+                    data-testid="input-food-search"
+                    type="text"
+                    placeholder="Buscar alimento…"
+                    className="w-full bg-white border border-[#E8EBE5] rounded-xl py-2.5 pl-10 pr-10 text-sm focus:outline-none focus:border-[#2F5641] transition-colors"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => { setSearchQuery(""); setDebouncedSearch(""); }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B9286]"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  data-testid="button-close-search-x"
+                  onClick={closeSearch}
+                  className="w-10 h-10 flex items-center justify-center text-[#8B9286] shrink-0"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div
+                className="flex-1 overflow-y-auto px-4 py-3"
+                style={{ scrollbarWidth: "none" }}
+              >
+                {isSearching ? (
+                  <div className="text-center py-12">
+                    <Loader2 size={24} className="animate-spin mx-auto text-[#8B9286]" />
+                    <p className="text-xs text-[#8B9286] mt-2">Buscando alimentos…</p>
+                  </div>
+                ) : debouncedSearch.length >= 2 && hasFoods ? (
+                  <div className="space-y-1">
+                    {appFoods.length > 0 && tbcaFoods.length > 0 && (
+                      <p className="text-[10px] font-medium text-[#8B9286] uppercase tracking-wider px-1 pt-1 pb-2">Seus alimentos</p>
+                    )}
+                    {appFoods.map((food) => (
+                      <button
+                        key={`app-${food.id}`}
+                        data-testid={`button-food-app-${food.id}`}
+                        onClick={() => selectFood({ source: "app", data: food })}
+                        className="w-full text-left p-3 rounded-xl active:bg-[#F5F3EE] border border-transparent active:border-[#E8EBE5] transition-all flex justify-between items-center"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium text-[#2F5641] text-sm block">{smartTruncate(food.nome)}</span>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            {food.marca && <span className="text-[10px] text-[#8B9286]">{food.marca}</span>}
+                            <span className="text-[10px] text-[#648D4A]">{food.calorias} kcal/100g</span>
+                          </div>
+                        </div>
+                        <Plus size={16} className="text-[#C7AE6A] shrink-0 ml-2" />
+                      </button>
+                    ))}
+                    {tbcaFoods.length > 0 && (
+                      <>
+                        {appFoods.length > 0 && (
+                          <div className="border-t border-[#E8EBE5] my-2" />
+                        )}
+                        {appFoods.length > 0 && (
+                          <p className="text-[10px] font-medium text-[#8B9286] uppercase tracking-wider px-1 pt-1 pb-2">Base de alimentos</p>
+                        )}
+                        {tbcaFoods.map((food) => (
+                          <button
+                            key={`tbca-${food.id}`}
+                            data-testid={`button-food-tbca-${food.id}`}
+                            onClick={() => selectFood({ source: "tbca", data: food })}
+                            className="w-full text-left p-3 rounded-xl active:bg-[#F5F3EE] border border-transparent active:border-[#E8EBE5] transition-all flex justify-between items-center"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium text-[#2F5641] text-sm block">{smartTruncate(food.descricao)}</span>
+                              {food.grupo_alimentar && (
+                                <span className="text-[10px] text-[#8B9286] mt-0.5 block">{food.grupo_alimentar.nome}</span>
+                              )}
+                            </div>
+                            <Plus size={16} className="text-[#C7AE6A] shrink-0 ml-2" />
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                ) : debouncedSearch.length >= 2 && !hasFoods && !isSearching ? (
+                  <div className="text-center py-12 opacity-60">
+                    <Search size={32} className="mx-auto mb-2 text-[#8B9286]" />
+                    <p className="text-sm text-[#8B9286]">Nenhum alimento encontrado</p>
+                    <p className="text-xs text-[#8B9286] mt-1">Tente outro termo de busca</p>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 opacity-40">
+                    <Search size={32} className="mx-auto mb-2 text-[#8B9286]" />
+                    <p className="text-xs text-[#8B9286]">Digite ao menos 2 letras para buscar</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </Layout>
   );
