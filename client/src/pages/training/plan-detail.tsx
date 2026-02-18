@@ -369,6 +369,7 @@ export default function PlanDetailScreen() {
             onClick={openEditPlan}
             className="w-10 h-10 flex items-center justify-center text-[#2F5641]"
             disabled={isLoading}
+            aria-label="Editar plano"
           >
             <Pencil size={18} />
           </button>
@@ -394,7 +395,7 @@ export default function PlanDetailScreen() {
                 </div>
               </div>
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#E8EBE5]">
-                <span className="text-xs font-medium text-[#8B9286] uppercase tracking-wider">Status</span>
+                <span className="text-xs font-medium text-[#8B9286] tracking-wider">Status</span>
                 <button
                   data-testid="button-toggle-ativo"
                   onClick={handleToggleAtivo}
@@ -408,12 +409,15 @@ export default function PlanDetailScreen() {
                   {plano.ativo ? "Ativo" : "Inativo"}
                 </button>
               </div>
+              {plano.ativo && (
+                <p className="text-xs text-[#8B9286] mt-2">Apenas um plano pode estar ativo por vez.</p>
+              )}
             </section>
 
             <section>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-[#2F5641] uppercase tracking-wide" data-testid="text-items-count">
-                  Exercícios ({plano.itens?.length || 0})
+                <h2 className="text-sm font-bold text-[#2F5641] tracking-wide" data-testid="text-items-count">
+                  {(plano.itens?.length || 0) === 0 ? "Exercícios" : (plano.itens?.length || 0) === 1 ? "1 exercício" : `${plano.itens?.length} exercícios`}
                 </h2>
                 <button
                   data-testid="button-add-exercicio"
@@ -421,15 +425,15 @@ export default function PlanDetailScreen() {
                   className="flex items-center gap-1.5 text-xs font-semibold text-[#C7AE6A] hover:underline"
                 >
                   <Plus size={14} />
-                  Adicionar
+                  Adicionar exercício
                 </button>
               </div>
 
               {!plano.itens?.length ? (
                 <div className="bg-white rounded-2xl border border-[#E8EBE5] p-8 text-center" data-testid="text-empty-items">
                   <Dumbbell className="w-10 h-10 text-[#E8EBE5] mx-auto mb-3" />
-                  <p className="text-sm text-[#8B9286]">Nenhum exercício adicionado.</p>
-                  <p className="text-xs text-[#8B9286] mt-1">Toque em "Adicionar" para começar.</p>
+                  <p className="text-sm text-[#8B9286]">Este plano ainda não tem exercícios.</p>
+                  <p className="text-xs text-[#8B9286] mt-1">Toque em "+ Adicionar exercício" para montar sua rotina.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -496,14 +500,24 @@ export default function PlanDetailScreen() {
         ) : null}
 
         <div className="fixed bottom-[84px] left-0 right-0 p-6 bg-gradient-to-t from-[#FAFBF8] via-[#FAFBF8] to-transparent z-40 max-w-[430px] mx-auto">
-          <button
-            data-testid="button-iniciar-treino"
-            onClick={() => setLocation(`/training/player/${planoId}`)}
-            disabled={isLoading || !plano?.itens?.length}
-            className="w-full bg-[#2F5641] text-white py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-[#2F5641]/25 flex items-center justify-center gap-3 active:scale-[0.98] transition-transform disabled:opacity-50"
-          >
-            <Play size={20} fill="white" /> Iniciar Treino
-          </button>
+          {plano?.itens?.length ? (
+            <button
+              data-testid="button-iniciar-treino"
+              onClick={() => setLocation(`/training/player/${planoId}`)}
+              disabled={isLoading}
+              className="w-full bg-[#2F5641] text-white py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-[#2F5641]/25 flex items-center justify-center gap-3 active:scale-[0.98] transition-transform disabled:opacity-50"
+            >
+              <Play size={20} fill="white" /> Iniciar treino
+            </button>
+          ) : (
+            <button
+              data-testid="button-iniciar-treino"
+              disabled
+              className="w-full bg-[#2F5641] text-white py-4 rounded-2xl font-semibold text-lg flex items-center justify-center opacity-40 cursor-not-allowed"
+            >
+              Adicione exercícios para iniciar
+            </button>
+          )}
         </div>
 
         <AnimatePresence>

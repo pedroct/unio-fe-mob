@@ -1,0 +1,113 @@
+# UX Writing + UX/UI — Correções Tela Detalhe do Plano
+
+**Módulo:** Treino  
+**Tela:** Detalhe do plano (ex.: Hipertrofia)  
+**Data:** 18/02/2026  
+**Escopo:** Textos, copy e ajustes de UX/UI — não alterar lógica ou chamadas de API.
+
+---
+
+## 1. Cabeçalho da tela
+
+- **Título atual:** `Hipertrofia`
+- **Manter:** o título dinâmico com o nome do plano está correto
+- **Ajuste:** garantir truncamento com reticências (`...`) se o nome
+  ultrapassar o espaço disponível no header
+
+---
+
+## 2. Card de informações do plano
+
+### 2.1 Subtexto do objetivo
+- **Atual:** `Ganho de Massa`
+- **Novo:** `Ganho de massa` (caixa mista — apenas primeira letra maiúscula)
+
+### 2.2 Label de status
+- **Atual:** `STATUS` (ALL CAPS)
+- **Novo:** `Status` (caixa mista)
+
+### 2.3 Badge de status
+- **Atual:** `Ativo`
+- **Manter:** `Ativo`
+- **Adicionar:** helper text abaixo do card com a string:
+  `Apenas um plano pode estar ativo por vez.`
+- **Estilo:** fonte 12px, cor neutra/secundária, alinhado à esquerda,
+  fora do card
+
+---
+
+## 3. Seção de exercícios
+
+### 3.1 Título da seção
+- **Atual:** `EXERCÍCIOS (0)`
+- **Novo:** pluralização condicional em caixa mista:
+  - `Exercícios` quando count === 0
+  - `1 exercício` quando count === 1
+  - `{n} exercícios` quando count > 1
+- **Regra:** remover ALL CAPS; contador integrado ao título
+  apenas quando count > 0
+
+### 3.2 CTA de adicionar
+- **Atual:** `+ Adicionar`
+- **Novo:** `+ Adicionar exercício`
+- **Regra:** CTAs devem ser autoexplicativos sem depender do contexto visual
+
+### 3.3 Estado vazio — texto principal
+- **Atual:** `Nenhum exercício adicionado.`
+- **Novo:** `Este plano ainda não tem exercícios.`
+- **Regra:** voz ativa, contextualizada no plano do usuário
+
+### 3.4 Estado vazio — instrução
+- **Atual:** `Toque em "Adicionar" para começar.`
+- **Novo:** `Toque em "+ Adicionar exercício" para montar sua rotina.`
+- **Regra:** a instrução deve referenciar o label exato do CTA
+  para evitar inconsistência
+
+---
+
+## 4. Botão primário — Iniciar Treino
+
+### 4.1 Estado sem exercícios (atual)
+- **Problema:** o botão "Iniciar Treino" aparece ativo mesmo sem
+  nenhum exercício no plano, induzindo o usuário a uma ação
+  que não pode ser concluída
+- **Solução:** desabilitar o botão quando `count === 0`
+- **Label no estado desabilitado:** `Adicione exercícios para iniciar`
+- **Estilo no estado desabilitado:** opacidade reduzida (40%),
+  não clicável, sem ícone de play
+
+### 4.2 Estado com exercícios
+- **Label:** `Iniciar treino` (caixa mista)
+- **Manter:** ícone de play à esquerda do texto
+
+---
+
+## 5. Ícone de edição (canto superior direito)
+
+- **Atual:** ícone de lápis sem label acessível
+- **Adicionar:** `aria-label="Editar plano"` para acessibilidade
+- **Tooltip (opcional):** `Editar plano` ao pressionar e segurar
+
+---
+
+## 6. Regras gerais de UX Writing (manter como padrão)
+
+- Nenhum texto de interface em ALL CAPS
+- Pluralização sempre condicional — nunca expor `(s)` ao usuário
+- CTAs devem nomear o objeto da ação: não `Adicionar`,
+  mas `Adicionar exercício`
+- Estado vazio deve contextualizar no objeto do usuário,
+  não descrever tecnicamente o estado do sistema
+- Botões de ação primária só habilitados quando a ação
+  for possível de ser concluída
+
+---
+
+## 7. Entrega esperada
+
+- Nome dos arquivos/componentes alterados
+- Confirmação de que nenhuma lógica de API foi modificada
+- Listagem de strings não encontradas no código
+  (caso o texto atual seja diferente do mapeado aqui)
+- Confirmação do comportamento do botão "Iniciar treino"
+  nos dois estados: com e sem exercícios
