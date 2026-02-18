@@ -1,0 +1,191 @@
+# Handoff Completo Replit — Suplementação (Frontend only)
+
+**Data:** 17/02/2026  
+**Responsável backend:** time UNIO (este repositório)  
+**Responsável Replit:** implementação frontend e integração HTTP
+
+---
+
+## 1) Escopo e responsabilidade
+
+### Replit (deve fazer)
+- implementar interface de suplementação no frontend;
+- integrar com APIs reais;
+- remover mocks, delays simulados e dados fixos;
+- garantir estados de loading/erro/vazio;
+- entregar testes frontend.
+
+### Replit (não deve fazer)
+- criar schema de banco;
+- criar ou alterar endpoints backend;
+- alterar regras de negócio no servidor.
+
+### UNIO backend (fora do Replit)
+- disponibilizar contrato e endpoints de suplementação;
+- manter autenticação, validações e persistência de dados.
+
+---
+
+## 2) Objetivo funcional
+
+Concluir a tela de suplementação com dados reais para:
+- protocolos ativos/inativos;
+- horários de ingestão do dia;
+- registro de tomada/adiamento/ignorar;
+- histórico e aderência.
+
+---
+
+## 3) Contrato de API para consumo (frontend)
+
+> Todos os endpoints abaixo são consumidos pelo frontend Replit; não implementar backend no Replit.
+
+> Importante: o backend expõe Suplementação sob o router de **Nutrição**.
+> Ou seja, o prefixo correto é: **`/api/nutricao/suplementacao/...`**.
+
+### Suplementação (Protocolos, Agenda, Histórico, Resumo)
+1. `GET /api/nutricao/suplementacao/protocolos`
+2. `POST /api/nutricao/suplementacao/protocolos`
+3. `PATCH /api/nutricao/suplementacao/protocolos/{id}`
+4. `POST /api/nutricao/suplementacao/protocolos/{id}/ativar`
+5. `GET /api/nutricao/suplementacao/agenda-hoje`
+6. `POST /api/nutricao/suplementacao/agenda/{itemHorarioId}/registrar`
+7. `GET /api/nutricao/suplementacao/historico?dias=30`
+8. `GET /api/nutricao/suplementacao/resumo`
+
+### Suplementação (Estoque)
+9. `GET /api/nutricao/suplementacao/estoque`
+10. `PATCH /api/nutricao/suplementacao/estoque/{suplementoId}`
+
+### Headers padrão
+- `Authorization: Bearer <JWT>`
+- `Content-Type: application/json`
+
+---
+
+## 4) Entregáveis de frontend
+
+### 4.1 Aba Protocolos
+- listar protocolos reais;
+- criar/editar protocolo (nome, objetivo, itens, dosagem, horários, `quantidade_por_dose`);
+- ativar protocolo com feedback visual de sucesso/erro;
+- exibir estado vazio quando não houver protocolo.
+
+### 4.2 Aba Hoje
+- consumir `agenda-hoje`;
+- exibir por horário: `pendente`, `tomado`, `atrasado`, `adiado`, `ignorado` (não usar `pulado`);
+- ação rápida para registrar ingestão;
+- atualização otimista opcional com rollback em erro.
+
+### 4.3 Aba Histórico
+- consumir `historico?dias=30`;
+- exibir timeline/lista de ingestões;
+- exibir filtros de período (7/30 dias, se já existir padrão de UI no app);
+- mostrar aderência e totais com base em `resumo`.
+
+### 4.4 Aba Estoque
+- consumir `GET /api/nutricao/suplementacao/estoque`;
+- permitir editar `quantidade_atual` e `quantidade_minima` via `PATCH /api/nutricao/suplementacao/estoque/{suplementoId}`;
+- refletir baixa automática quando usuário registra `status="tomado"`.
+
+### 4.5 Remoção de mocks
+- remover payloads fake;
+- remover `setTimeout` de sucesso simulado;
+- remover valores hardcoded de status e aderência.
+
+---
+
+## 5) Estados de UI obrigatórios
+
+Para cada chamada HTTP:
+- `loading`: skeleton/spinner padrão do projeto;
+- `erro`: mensagem acionável + botão de tentar novamente;
+- `vazio`: texto orientando próxima ação (ex.: criar protocolo);
+- `sucesso`: confirmação discreta (toast/snackbar) nas mutações.
+
+---
+
+## 6) Regras de integração no frontend
+
+- não chamar endpoint sem JWT válido;
+- mapear corretamente status retornado pela API sem “tradução inventada”;
+- preservar timezone exibindo horário local do usuário;
+- evitar chamadas redundantes (cache/refetch controlado);
+- tratar erro `401` com fluxo padrão de sessão expirada.
+
+### Regras de erro (importante)
+- `400` geralmente retorna no formato: `{ "erro": "..." }`.
+- Quando houver baixa automática de estoque, o backend pode retornar `400` com mensagem contendo **"Estoque insuficiente"**.
+
+---
+
+## 7) Testes frontend mínimos (obrigatórios)
+
+1. carrega agenda real com sucesso;
+2. registra ingestão com sucesso;
+3. exibe erro de API na agenda;
+4. exibe estado vazio sem protocolos;
+5. renderiza histórico real;
+6. não usa dados mock em runtime.
+
+---
+
+## 8) Critérios de aceite (go/no-go)
+
+- [ ] Tela de suplementação totalmente ligada ao backend real.
+- [ ] Nenhum mock restante no fluxo principal.
+- [ ] Sem implementação backend no Replit.
+- [ ] Testes frontend principais passando.
+- [ ] Evidência de chamadas aos 8 endpoints (log/print de integração).
+
+---
+
+## 9) Entrega esperada pelo time Replit
+
+Ao concluir, retornar:
+1. lista de arquivos alterados;
+2. telas/componentes conectados;
+3. hooks/serviços HTTP criados/alterados;
+4. resultado dos testes frontend;
+5. pendências bloqueadas por backend (se houver).
+
+---
+
+## 10) Prompt pronto para colar no Replit
+
+Implemente a funcionalidade de Suplementação no frontend do app usando APENAS integração com APIs reais (sem implementar backend).  
+Objetivo: remover todos os mocks e conectar as abas Protocolos, Hoje e Histórico aos endpoints:
+
+- GET /api/nutricao/suplementacao/protocolos
+- POST /api/nutricao/suplementacao/protocolos
+- PATCH /api/nutricao/suplementacao/protocolos/{id}
+- POST /api/nutricao/suplementacao/protocolos/{id}/ativar
+- GET /api/nutricao/suplementacao/agenda-hoje
+- POST /api/nutricao/suplementacao/agenda/{itemHorarioId}/registrar
+- GET /api/nutricao/suplementacao/historico?dias=30
+- GET /api/nutricao/suplementacao/resumo
+
+E adicionar Estoque:
+- GET /api/nutricao/suplementacao/estoque
+- PATCH /api/nutricao/suplementacao/estoque/{suplementoId}
+
+Requisitos:
+- manter autenticação JWT;
+- implementar loading/erro/vazio/sucesso;
+- remover delays e dados hardcoded;
+- atualizar a UI para status corretos: `pendente`, `atrasado`, `tomado`, `adiado`, `ignorado`;
+- ao criar/editar protocolo, enviar e persistir `quantidade_por_dose` (default = 1);
+- tratar erro `400` com `{ "erro": "Estoque insuficiente..." }` ao registrar `status="tomado"`;
+- criar testes frontend mínimos para agenda, registro de ingestão, histórico e estados de erro/vazio.
+
+Entrega:
+- liste arquivos alterados;
+- descreva integrações HTTP realizadas;
+- apresente resultado dos testes frontend;
+- reporte eventuais bloqueios de backend.
+
+---
+
+## Observação de arquitetura (base atual UNIO)
+
+No backend atual da Nutrição existem refeições com `horario_lembrete`, mas os modelos dedicados de suplementação serão responsabilidade do time UNIO backend. O Replit deve focar exclusivamente na camada de frontend consumindo o contrato de API publicado.

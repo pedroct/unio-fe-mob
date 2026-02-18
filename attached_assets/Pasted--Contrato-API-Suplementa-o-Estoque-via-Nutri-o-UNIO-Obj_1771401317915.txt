@@ -1,0 +1,412 @@
+# Contrato API — Suplementação + Estoque (via Nutrição) — UNIO
+
+**Objetivo (WEB/Replit):** consumir a suplementação já implementada no backend, incluindo **protocolos**, **agenda do dia**, **registro de ingestão**, **histórico**, **resumo (aderência)** e **estoque de suplementos** com **baixa automática** quando `status="tomado"`.
+
+> Importante: os endpoints ficam sob **`/api/nutricao/suplementacao`** (não existe `/api/suplementacao` “puro”).
+
+---
+
+## Base URL
+
+- Staging: `https://staging.unio.tec.br`
+
+---
+
+## Headers
+
+- `Content-Type: application/json`
+- `Authorization: Bearer <access_token>` (obrigatório nos endpoints autenticados)
+
+---
+
+## Autenticação
+
+### `POST /api/auth/pair`
+
+**Request**
+```json
+{
+  "email": "email@exemplo.com",
+  "password": "senha"
+}
+```
+
+**200 Response**
+```json
+{
+  "email": "email@exemplo.com",
+  "refresh": "<jwt_refresh>",
+  "access": "<jwt_access>"
+}
+```
+
+---
+
+# Suplementação
+
+## 1) Protocolos
+
+### `GET /api/nutricao/suplementacao/protocolos`
+
+**Auth:** sim (JWT)
+
+**200 Response** (lista de protocolos)
+```json
+[
+  {
+    "id": 1,
+    "nome": "Protocolo Hipertrofia",
+    "objetivo": "Apoio à recuperação muscular",
+    "data_inicio": "2026-02-18",
+    "data_fim": null,
+    "ativo": true,
+    "itens": [
+      {
+        "id": 10,
+        "suplemento": {
+          "id": 5,
+          "nome": "Creatina",
+          "marca": "UNIO Labs",
+          "forma": "capsula",
+          "ativo": true
+        },
+        "dosagem": "2 caps",
+        "quantidade_por_dose": 2,
+        "instrucoes": "Tomar com água",
+        "ordem": 1,
+        "ativo": true,
+        "horarios": [
+          {
+            "id": 77,
+            "horario": "08:00:00",
+            "dias_semana": [0, 1, 2, 3, 4, 5, 6],
+            "lembrete_ativo": true,
+            "minutos_antecedencia": 10
+          }
+        ]
+      }
+    ]
+  }
+]
+```
+
+---
+
+### `POST /api/nutricao/suplementacao/protocolos`
+
+**Auth:** sim (JWT)
+
+**Regras**
+- `quantidade_por_dose` (int) é opcional e default = `1`.
+- `quantidade_por_dose` deve ser `>= 1`.
+- Por item, deve informar `suplemento_id` **ou** `suplemento_nome`.
+
+**Request**
+```json
+{
+  "nome": "Protocolo Base",
+  "objetivo": "Apoio à recuperação muscular",
+  "data_inicio": "2026-02-18",
+  "data_fim": null,
+  "ativo": true,
+  "itens": [
+    {
+      "suplemento_nome": "Creatina",
+      "marca": "UNIO Labs",
+      "forma": "capsula",
+      "dosagem": "2 caps",
+      "quantidade_por_dose": 2,
+      "instrucoes": "Tomar com água",
+      "ordem": 1,
+      "ativo": true,
+      "horarios": [
+        {
+          "horario": "08:00:00",
+          "dias_semana": [0, 1, 2, 3, 4, 5, 6],
+          "lembrete_ativo": true,
+          "minutos_antecedencia": 10
+        }
+      ]
+    }
+  ]
+}
+```
+
+**201 Response**
+- Retorna o protocolo criado (mesmo formato do `GET` de protocolos).
+
+**400 Response (exemplos)**
+```json
+{ "erro": "quantidade_por_dose deve ser maior ou igual a 1." }
+```
+
+---
+
+### `PATCH /api/nutricao/suplementacao/protocolos/{protocolo_id}`
+
+**Auth:** sim (JWT)
+
+**Request**
+- Campos são opcionais.
+- Se enviar `itens`, o backend **substitui (recria)** todos os itens do protocolo.
+
+```json
+{
+  "nome": "Protocolo Ajustado",
+  "itens": [
+    {
+      "suplemento_id": 5,
+      "dosagem": "1 caps",
+      "quantidade_por_dose": 1,
+      "horarios": [
+        { "horario": "09:00:00" }
+      ]
+    }
+  ]
+}
+```
+
+**200 Response**
+- Protocolo atualizado.
+
+**404 Response**
+```json
+{ "erro": "Protocolo não encontrado" }
+```
+
+---
+
+### `POST /api/nutricao/suplementacao/protocolos/{protocolo_id}/ativar`
+
+**Auth:** sim (JWT)
+
+**Regra**
+- Ativa este protocolo e desativa os outros do usuário.
+
+**200 Response**
+- Protocolo ativado.
+
+**404 Response**
+```json
+{ "erro": "Protocolo não encontrado" }
+```
+
+---
+
+## 2) Agenda do dia
+
+### `GET /api/nutricao/suplementacao/agenda-hoje`
+
+**Auth:** sim (JWT)
+
+**200 Response**
+```json
+{
+  "data": "2026-02-18",
+  "itens": [
+    {
+      "item_horario_id": 77,
+      "item_protocolo_id": 10,
+      "suplemento_nome": "Creatina",
+      "dosagem": "2 caps",
+      "instrucoes": "Tomar com água",
+      "horario": "08:00:00",
+      "horario_planejado": "2026-02-18T08:00:00-03:00",
+      "status": "pendente",
+      "lembrete_ativo": true,
+      "minutos_antecedencia": 10
+    }
+  ],
+  "total": 1
+}
+```
+
+**Status possíveis em agenda**
+- `"pendente"`: ainda não registrado e ainda não passou do horário
+- `"atrasado"`: ainda não registrado e já passou do horário
+- `"tomado"`, `"adiado"`, `"ignorado"`: quando já existe registro para o horário planejado
+
+---
+
+## 3) Registrar ingestão
+
+### `POST /api/nutricao/suplementacao/agenda/{item_horario_id}/registrar`
+
+**Auth:** sim (JWT)
+
+**Request**
+```json
+{
+  "status": "tomado",
+  "observacao": "Tomado após café"
+}
+```
+
+**Status aceitos**
+- `tomado`
+- `adiado`
+- `ignorado`
+
+**200 Response**
+```json
+{
+  "id": 123,
+  "item_protocolo_id": 10,
+  "suplemento_nome": "Creatina",
+  "dosagem": "2 caps",
+  "horario_planejado": "2026-02-18T08:00:00-03:00",
+  "registrado_em": "2026-02-18T08:05:10-03:00",
+  "status": "tomado",
+  "observacao": "Tomado após café"
+}
+```
+
+**Regras importantes**
+- O registro é para o **dia atual** e o **horário planejado** daquele item.
+- Não permite duplicar registro no mesmo `horario_planejado`.
+
+**Baixa automática de estoque**
+- Ocorre **somente** quando `status="tomado"`.
+- Debita do estoque o valor de `quantidade_por_dose` do item do protocolo.
+- Se **não existir** estoque configurado para aquele suplemento: não debita e não bloqueia.
+- Se existir estoque e estiver **insuficiente**: retorna **400** e **não registra** a ingestão.
+
+**400 Response (exemplos)**
+```json
+{ "erro": "Já existe registro para este suplemento no horário planejado." }
+```
+
+```json
+{ "erro": "Estoque insuficiente para Creatina." }
+```
+
+---
+
+## 4) Histórico
+
+### `GET /api/nutricao/suplementacao/historico?dias=30`
+
+**Auth:** sim (JWT)
+
+**200 Response**
+```json
+{
+  "registros": [
+    {
+      "id": 123,
+      "item_protocolo_id": 10,
+      "suplemento_nome": "Creatina",
+      "dosagem": "2 caps",
+      "horario_planejado": "2026-02-18T08:00:00-03:00",
+      "registrado_em": "2026-02-18T08:05:10-03:00",
+      "status": "tomado",
+      "observacao": ""
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## 5) Resumo (aderência)
+
+### `GET /api/nutricao/suplementacao/resumo`
+
+**Auth:** sim (JWT)
+
+**200 Response**
+```json
+{
+  "total_planejado_7d": 14,
+  "total_tomado_7d": 10,
+  "aderencia_7d": 71.43,
+  "total_planejado_30d": 60,
+  "total_tomado_30d": 42,
+  "aderencia_30d": 70.0
+}
+```
+
+---
+
+# Estoque de Suplementos
+
+## 6) Listar estoque
+
+### `GET /api/nutricao/suplementacao/estoque`
+
+**Auth:** sim (JWT)
+
+**200 Response**
+```json
+[
+  {
+    "suplemento": {
+      "id": 5,
+      "nome": "Creatina",
+      "marca": "UNIO Labs",
+      "forma": "capsula",
+      "ativo": true
+    },
+    "quantidade_atual": 30,
+    "quantidade_minima": 5
+  }
+]
+```
+
+---
+
+## 7) Atualizar estoque de um suplemento
+
+### `PATCH /api/nutricao/suplementacao/estoque/{suplemento_id}`
+
+**Auth:** sim (JWT)
+
+**Request**
+- Enviar pelo menos um campo.
+
+```json
+{
+  "quantidade_atual": 30,
+  "quantidade_minima": 5
+}
+```
+
+**200 Response**
+```json
+{
+  "suplemento": {
+    "id": 5,
+    "nome": "Creatina",
+    "marca": "UNIO Labs",
+    "forma": "capsula",
+    "ativo": true
+  },
+  "quantidade_atual": 30,
+  "quantidade_minima": 5
+}
+```
+
+**400 Response (exemplos)**
+```json
+{ "erro": "Informe quantidade_atual e/ou quantidade_minima." }
+```
+
+```json
+{ "erro": "quantidade_atual não pode ser negativa." }
+```
+
+**404 Response**
+```json
+{ "erro": "Suplemento não encontrado" }
+```
+
+---
+
+# Regras de UI / Integração (Replit)
+
+- Usar sempre o prefixo `GET/POST/PATCH /api/nutricao/suplementacao/...`.
+- Ao criar/editar protocolo, enviar `quantidade_por_dose` (default `1`) para permitir baixa automática.
+- Para controlar estoque, chamar `PATCH /estoque/{suplemento_id}` e depois `GET /estoque`.
+- Tratar erro `401` como sessão expirada (pedir login/refresh token conforme fluxo do app).
+- Tratar erro `400` de estoque insuficiente mostrando feedback e mantendo estado consistente.
