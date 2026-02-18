@@ -71,7 +71,7 @@ export default function NutritionScaleScreen() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [connectionStatus, setConnectionStatus] = useState<"searching" | "connected" | "disconnected">("searching");
+  const [connectionStatus, setConnectionStatus] = useState<"searching" | "connecting" | "connected" | "disconnected">("disconnected");
   const [weight, setWeight] = useState(0);
   const [manualWeight, setManualWeight] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -108,7 +108,7 @@ export default function NutritionScaleScreen() {
     enabled: !!user && shouldFallbackToTBCA,
   });
 
-  const { data: pendingData } = useQuery<{ pesagens: PesagemPendente[]; total: number }>({
+  const { data: pendingData, isLoading: pendingLoading, isError: pendingError } = useQuery<{ pesagens: PesagemPendente[]; total: number }>({
     queryKey: ["nutricao", "pesagens-pendentes"],
     queryFn: async () => {
       const res = await apiFetch("/api/nutricao/diario/pesagens-pendentes");
@@ -116,6 +116,7 @@ export default function NutritionScaleScreen() {
       return res.json();
     },
     enabled: !!user,
+    refetchInterval: 5000,
   });
 
   useEffect(() => {
@@ -130,11 +131,16 @@ export default function NutritionScaleScreen() {
   }, [pendingData]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    if (pendingLoading) {
+      setConnectionStatus("searching");
+    } else if (pendingError) {
+      setConnectionStatus("disconnected");
+    } else if (pendingData?.pesagens?.length && pendingData.pesagens[0].status === "PENDENTE") {
       setConnectionStatus("connected");
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, []);
+    } else {
+      setConnectionStatus("disconnected");
+    }
+  }, [pendingData, pendingLoading, pendingError]);
 
   const isSearching = appFoodsLoading || tbcaFoodsLoading;
   const hasFoods = appFoods.length > 0 || tbcaFoods.length > 0;
@@ -211,6 +217,12 @@ export default function NutritionScaleScreen() {
     },
   });
 
+  useEffect(() => {
+    if (confirmMutation.isPending) {
+      setConnectionStatus("connecting");
+    }
+  }, [confirmMutation.isPending]);
+
   const discardMutation = useMutation({
     mutationFn: async (pesagemId: number) => {
       const res = await apiFetch(`/api/nutricao/diario/pesagens-pendentes/${pesagemId}`, {
@@ -275,7 +287,12 @@ export default function NutritionScaleScreen() {
             <ChevronLeft size={24} />
           </button>
           <h1 className="font-display text-lg font-semibold text-[#2F5641]">Balança Inteligente</h1>
-          <div className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors ${connectionStatus === 'connected' ? 'bg-[#648D4A]/10 text-[#648D4A]' : 'bg-[#E8EBE5] text-[#8B9286]'}`}>
+          <div className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors ${
+            connectionStatus === 'connected' ? 'bg-[#10B981]/10 text-[#10B981]' :
+            connectionStatus === 'connecting' ? 'bg-[#F59E0B]/10 text-[#F59E0B]' :
+            connectionStatus === 'searching' ? 'bg-[#3B82F6]/10 text-[#3B82F6]' :
+            'bg-[#EF4444]/10 text-[#EF4444]'
+          }`}>
             <Bluetooth size={20} className={connectionStatus === 'searching' ? 'animate-pulse' : ''} />
           </div>
         </header>
@@ -289,18 +306,42 @@ export default function NutritionScaleScreen() {
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="flex flex-col items-center gap-1"
                 >
-                  <RefreshCw size={16} className="animate-spin text-[#C7AE6A]" />
-                  <p className="text-xs font-medium text-[#8B9286]">Buscando dispositivos...</p>
+                  <div className="flex items-center gap-1.5 bg-[#3B82F6]/10 px-3 py-1 rounded-full">
+                    <RefreshCw size={12} className="animate-spin text-[#3B82F6]" />
+                    <span className="text-[10px] font-bold text-[#3B82F6] uppercase tracking-wide">Buscando balança…</span>
+                  </div>
                 </motion.div>
-              ) : (
+              ) : connectionStatus === 'connecting' ? (
+                <motion.div
+                  key="connecting"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="flex flex-col items-center gap-1"
+                >
+                  <div className="flex items-center gap-1.5 bg-[#F59E0B]/10 px-3 py-1 rounded-full">
+                    <Loader2 size={12} className="animate-spin text-[#F59E0B]" />
+                    <span className="text-[10px] font-bold text-[#F59E0B] uppercase tracking-wide">Conectando…</span>
+                  </div>
+                </motion.div>
+              ) : connectionStatus === 'connected' ? (
                 <motion.div
                   key="connected"
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   className="flex flex-col items-center gap-1"
                 >
-                  <div className="flex items-center gap-1.5 bg-[#648D4A]/10 px-3 py-1 rounded-full">
-                    <Check size={12} className="text-[#648D4A]" strokeWidth={3} />
-                    <span className="text-[10px] font-bold text-[#648D4A] uppercase tracking-wide">Conectado</span>
+                  <div className="flex items-center gap-1.5 bg-[#10B981]/10 px-3 py-1 rounded-full">
+                    <Check size={12} className="text-[#10B981]" strokeWidth={3} />
+                    <span className="text-[10px] font-bold text-[#10B981] uppercase tracking-wide">Conectado</span>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="disconnected"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="flex flex-col items-center gap-1"
+                >
+                  <div className="flex items-center gap-1.5 bg-[#EF4444]/10 px-3 py-1 rounded-full">
+                    <X size={12} className="text-[#EF4444]" strokeWidth={3} />
+                    <span className="text-[10px] font-bold text-[#EF4444] uppercase tracking-wide">Desconectado</span>
                   </div>
                 </motion.div>
               )}
